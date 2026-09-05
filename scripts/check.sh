@@ -46,6 +46,24 @@ else
 fi
 
 say ""
+say "=== 4. gates (ratchet + protected surface) ==="
+if "$REPO/scripts/ratchet-lines.sh"; then
+  ok "line ratchet holds"
+else
+  bad "line ratchet failed"
+fi
+if "$REPO/scripts/protected-surface.sh"; then
+  ok "protected surface untouched"
+else
+  bad "protected surface has uncommitted changes"
+fi
+if "$REPO/scripts/check-headers.sh"; then
+  ok "module headers present"
+else
+  bad "module headers missing"
+fi
+
+say ""
 if [[ "$FAIL" -eq 0 ]]; then
   say "self-check passed."
 else

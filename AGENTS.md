@@ -59,7 +59,38 @@ Verify behavior at the boundary you changed.
 Prefer tests that prove the contract between layers over tests that mirror the
 implementation.
 
+New tests are red first.
+A new test must fail on the pre-change code and pass on the post-change code.
+One that passes both is the old behaviour under a new name. Stash, run, watch
+it fail, restore.
+
 One language, one voice. Code, identifiers, comments, commits, docs — all English.
+
+---
+
+## Do not manufacture motion
+
+A no-op is a legitimate result.
+If the behaviour already exists, verifying it and saying so completes the task.
+Before editing, read the implementation, the tests, the docs, and the working
+tree state. An agent that cannot accept a no-op will invent one, and every
+invention must be reviewed by someone.
+
+Do not forge success.
+No broad exception caught so a command exits zero; no test changed so an
+implementation passes; no threshold relaxed so a measurement passes; no
+expected result written into a fixture. When a check fails, diagnose first.
+Weakening the check is the last resort, and it needs a written reason from
+whoever owns it.
+
+Unrelated cleanup is its own task or nothing.
+Burying it in another change makes a diff nobody asked to review.
+
+Report in grades.
+Observed: a command ran, and here is its output. Inferred: this output implies
+that. Assumed: true unless told otherwise, and nothing was checked.
+Unverified: a claim that could be checked and was not. A report may be short;
+it may not blur these.
 
 ---
 
@@ -157,8 +188,19 @@ CLI output, `docs/`, and this file are all English.
   skills an agent loads.
 - `docs/` — repo design docs. Start at [`docs/index.md`](docs/index.md); the
   requirements live in [`docs/user-stories.md`](docs/user-stories.md).
-- `scripts/check.sh` — the full self-check (build + vet + tests + self-compile).
-  Run it before opening a change.
+- `scripts/check.sh` — the full self-check (build + vet + tests + self-compile
+  + gates). Run it before opening a change.
+- `scripts/ratchet-lines.sh` + `scripts/ratchet-lines.baseline.txt` — the line
+  ratchet: 320 lines on non-test Go sources, chosen from the distribution the
+  day it was installed. The baseline holds the one stock violation and may
+  only shrink; a new baseline line needs owner approval.
+- `scripts/protected-surface.sh` — the protected surface: foundation files
+  whose change is a decision, not a commit. The gate blocks while the working
+  tree touches one; the way through is `ALLOW_FOUNDATION=1` for that run and
+  a `foundation:` commit prefix recording the approval.
+- `scripts/check-headers.sh` — the module header gate: every maintained Go
+  and shell file opens with a comment header. Installed with zero stock, so
+  it is a hard gate, not a ratchet.
 
 The compiler carries no skill names, domain words, or classification tables.
 That boundary is enforced by a test, not trusted; see

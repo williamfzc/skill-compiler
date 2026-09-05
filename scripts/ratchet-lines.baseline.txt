@@ -1,0 +1,8 @@
+# Existing violations at ratchet install time (2026-09-05).
+# Budget: 320 lines on non-test Go sources (test files are exempt).
+# This file may only shrink. Do not add lines: a new violation must be fixed,
+# or a module that must legitimately grow past the budget is approved by an
+# owner, who adds the line in a reviewed commit. Removing a line happens in
+# the same commit as the fix that pays the debt. One path per line, no line
+# counts — the scan output is compared against these paths directly.
+internal/cli/cli.go

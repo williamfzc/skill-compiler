@@ -16,6 +16,7 @@ import (
 	"skillscope/internal/collect"
 	"skillscope/internal/paths"
 	"skillscope/internal/state"
+	"skillscope/internal/viz"
 )
 
 // Run parses argv and dispatches; it returns the process exit code.
@@ -53,6 +54,8 @@ func Main(argv []string) int {
 		return cmdRoots(rest)
 	case "diff":
 		return cmdDiff(rest)
+	case "viz":
+		return cmdViz(rest)
 	default:
 		fmt.Fprintf(os.Stderr, "unknown command: %s\n\n", cmd)
 		printTopHelp(os.Stderr)
@@ -519,6 +522,43 @@ func cmdDiff(rest []string) int {
 
 // diffStates does set subtraction only: a regression is what `after` has and
 // `before` lacks.
+// cmdViz renders the compiled graph for human viewing. Mermaid and DOT go to
+// stdout; the default format, HTML, is a self-contained page and needs --out.
+func cmdViz(rest []string) int {
+	if err := checkFlags(rest, true, "--format", "--out"); err != nil {
+		return usageErr(err)
+	}
+	f, err := parseCommon(rest)
+	if err != nil {
+		return usageErr(err)
+	}
+	format := flagValue(rest, "--format")
+	if format == "" {
+		format = "html"
+	}
+	g := state.Compile(f.extraRoot, f.onlyRoot)
+	switch format {
+	case "mermaid":
+		fmt.Print(viz.Mermaid(g))
+	case "dot":
+		fmt.Print(viz.DOT(g))
+	case "html":
+		out := flagValue(rest, "--out")
+		if out == "" {
+			return usageErr(fmt.Errorf("viz --format html requires --out FILE"))
+		}
+		if err := os.WriteFile(out, []byte(viz.HTML(g)), 0o644); err != nil {
+			fmt.Fprintln(os.Stderr, err)
+			return 2
+		}
+		fmt.Printf("wrote %s (%d file edges) -- open it in a browser\n",
+			out, g.Summary.FileEdgeCount)
+	default:
+		return usageErr(fmt.Errorf("unknown viz format %q (html, mermaid, dot)", format))
+	}
+	return 0
+}
+
 type brokenKey struct{ src, raw string }
 
 func diffStates(b, a *state.Graph) (reg, imp, notes []string) {
@@ -759,6 +799,7 @@ func printTopHelp(w io.Writer) {
 	fmt.Fprintln(w, "  query    all relationships of one skill (--skill NAME)")
 	fmt.Fprintln(w, "  roots    list the discovered load roots only")
 	fmt.Fprintln(w, "  diff     compare two states, flag regressions (--before, --after)")
+	fmt.Fprintln(w, "  viz      render the graph for viewing (html default; mermaid, dot)")
 	fmt.Fprintln(w)
 	fmt.Fprintln(w, "common flags:")
 	fmt.Fprintln(w, "  --extra-root DIR  append one load root (repeatable)")

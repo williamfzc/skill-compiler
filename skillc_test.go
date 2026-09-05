@@ -677,6 +677,50 @@ func TestSkillFlagIsSkillcOwnPage(t *testing.T) {
 	}
 }
 
+// viz renders the compiled graph for human viewing: self-contained HTML by
+// default, plain Mermaid or DOT on request.
+func TestVizRendersGraph(t *testing.T) {
+	root := t.TempDir()
+	mkskill(t, root, "a", "a", true, strp("does a"),
+		"\nsee [b](../b/SKILL.md) and read `notes/plan.md`\n", "")
+	simpleSkill(t, root, "b", "b")
+	mkfile(t, root, "a/notes/plan.md", "# plan\n")
+
+	code, out := runCLI(t, "viz", "--only-root", root, "--format", "mermaid")
+	if code != 0 {
+		t.Fatalf("viz mermaid exits 0, got %d: %s", code, out)
+	}
+	for _, want := range []string{"flowchart", "SKILL.md", "notes/plan.md"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("mermaid output should contain %q", want)
+		}
+	}
+
+	code, out = runCLI(t, "viz", "--only-root", root, "--format", "dot")
+	if code != 0 || !strings.Contains(out, "digraph") {
+		t.Fatalf("viz dot should emit a digraph, got %d: %s", code, out)
+	}
+
+	outPath := filepath.Join(t.TempDir(), "graph.html")
+	if code, out := runCLI(t, "viz", "--only-root", root, "--out", outPath); code != 0 {
+		t.Fatalf("viz html exits 0, got %d: %s", code, out)
+	}
+	html, err := os.ReadFile(outPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"<!doctype html>", "mermaid", "notes/plan.md"} {
+		if !strings.Contains(string(html), want) {
+			t.Fatalf("html should contain %q", want)
+		}
+	}
+
+	// An unknown format is a usage error, not a silent fallback.
+	if code, _ := runCLI(t, "viz", "--only-root", root, "--format", "png"); code != 2 {
+		t.Fatalf("unknown viz format -> exit 2, got %d", code)
+	}
+}
+
 // Passing a value to the flag is a misuse with an explicit pointer to query.
 func TestSkillFlagRejectsValue(t *testing.T) {
 	code, out := runCLI(t, "--skill", "a")

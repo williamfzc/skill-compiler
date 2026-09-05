@@ -11,6 +11,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"skillscope/internal/collect"
 	"skillscope/internal/paths"
@@ -19,24 +20,106 @@ import (
 // AgentRootCandidates are the directories an agent loads skills directly from
 // (recursively). Skills inside project repositories are intentionally absent
 // -- they do not occupy the agent's resident context and are "for later".
+//
+// The list mirrors the global skills dirs of the agent table in
+// vercel-labs/skills (MIT), src/agents.ts @ 435076e (2026-08-18) -- that table
+// is the community-maintained source of truth for "which agent loads from
+// where"; re-sync against a pinned revision when new agents appear. Divergence
+// from upstream is intentional and recorded in docs/load-roots.md:
+//   - ~/.trae/skills/.system and ~/.aipaas/skills are observed on real
+//     machines but absent upstream;
+//   - env-relocated homes (CODEX_HOME etc.) live in envAgentHomes below;
+//   - upstream's XDG configHome variants are pinned to ~/.config here.
 var AgentRootCandidates = []string{
 	"~/.trae/skills",
+	"~/.trae-cn/skills",
 	"~/.trae/skills/.system",
 	"~/.agents/skills",
 	"~/.claude/skills",
 	"~/.codex/skills",
 	"~/.cursor/skills",
 	"~/.gemini/skills",
-	"~/.config/agents/skills",
+	"~/.gemini/antigravity/skills",
+	"~/.gemini/antigravity-cli/skills",
 	"~/.aipaas/skills",
+	"~/.zcode/skills",
+	"~/.config/agents/skills",
+	"~/.config/devin/skills",
+	"~/.config/goose/skills",
+	"~/.config/opencode/skills",
+	"~/.config/crush/skills",
+	"~/.config/kimchi/harness/skills",
+	"~/.aider-desk/skills",
+	"~/.augment/skills",
+	"~/.bob/skills",
+	"~/.codeartsdoer/skills",
+	"~/.codebuddy/skills",
+	"~/.codemaker/skills",
+	"~/.codestudio/skills",
+	"~/.codeium/windsurf/skills",
+	"~/.commandcode/skills",
+	"~/.continue/skills",
+	"~/.copilot/skills",
+	"~/.deepagents/agent/skills",
+	"~/.factory/skills",
+	"~/.firebender/skills",
+	"~/.forge/skills",
+	"~/.iflow/skills",
+	"~/.inferencesh/skills",
+	"~/.jazz/skills",
+	"~/.junie/skills",
+	"~/.kilocode/skills",
+	"~/.kiro/skills",
+	"~/.kode/skills",
+	"~/.lingma/skills",
+	"~/.mcpjam/skills",
+	"~/.minimax/skills",
+	"~/.moxby/skills",
+	"~/.mux/skills",
+	"~/.neovate/skills",
+	"~/.ona/skills",
+	"~/.openhands/skills",
+	"~/.pi/agent/skills",
+	"~/.pochi/skills",
+	"~/.posit/assistant/skills",
+	"~/.qoder/skills",
+	"~/.qoder-cn/skills",
+	"~/.qwen/skills",
+	"~/.reasonix/skills",
+	"~/.rovodev/skills",
+	"~/.roo/skills",
+	"~/.snowflake/cortex/skills",
+	"~/.tabnine/agent/skills",
+	"~/.terramind/skills",
+	"~/.tinycloud/skills",
+	"~/.openclaw/skills",
+	"~/.clawdbot/skills",
+	"~/.moltbot/skills",
+	"~/.zencoder/skills",
+}
+
+// envAgentHomes relocatable agent homes: when the env var is set (and
+// non-blank), the loader uses that home instead of the default, so its
+// skills/ directory there is what actually loads. Mirrors the env handling in
+// vercel-labs/skills src/agents.ts.
+var envAgentHomes = []struct{ env, fallback string }{
+	{"CODEX_HOME", "~/.codex"},
+	{"CLAUDE_CONFIG_DIR", "~/.claude"},
+	{"VIBE_HOME", "~/.vibe"},
+	{"HERMES_HOME", "~/.hermes"},
+	{"AUTOHAND_HOME", "~/.autohand"},
+	{"GROK_HOME", "~/.grok"},
 }
 
 // PluginCacheRoots hold plugin-provided skills. Each plugin registers its own
 // skills/ directory as a load root; the depth varies, so every directory
-// named skills that directly contains a SKILL.md is a candidate.
+// named skills that directly contains a SKILL.md is a candidate. Not an
+// upstream concept (vercel-labs/skills only installs); discovered on real
+// machines.
 var PluginCacheRoots = []string{
 	"~/.trae/plugins/cache",
 	"~/.claude/plugins/cache",
+	"~/.zcode/cli/plugins/cache",
 }
 
 // Discover finds every skill root an agent will load. Results are deduped by
@@ -69,6 +152,14 @@ func Discover(extra, only []string) []collect.Root {
 
 	for _, c := range AgentRootCandidates {
 		add(paths.Expand(c), "agent")
+	}
+	// An env-set home relocates the loader's home dir; that location's
+	// skills/ is what actually loads. The static candidate list already
+	// covers the default, and add() dedups by realpath.
+	for _, h := range envAgentHomes {
+		if v := strings.TrimSpace(os.Getenv(h.env)); v != "" {
+			add(filepath.Join(paths.Expand(v), "skills"), "agent")
+		}
 	}
 	for _, c := range extra {
 		add(paths.Expand(c), "agent")

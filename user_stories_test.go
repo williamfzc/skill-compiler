@@ -66,10 +66,16 @@ func baseHome(t *testing.T) string {
 	return home
 }
 
-// withHome runs fn with HOME pointed at a fake home dir.
+// withHome runs fn with HOME pointed at a fake home dir. Relocated agent
+// homes (CODEX_HOME etc.) are blanked -- "" reads as unset -- so a dev
+// machine's real env cannot leak into a fake-home test.
 func withHome(t *testing.T, home string, fn func()) {
 	t.Helper()
 	t.Setenv("HOME", home)
+	for _, env := range []string{"CODEX_HOME", "CLAUDE_CONFIG_DIR",
+		"VIBE_HOME", "HERMES_HOME", "AUTOHAND_HOME", "GROK_HOME"} {
+		t.Setenv(env, "")
+	}
 	fn()
 }
 
@@ -157,6 +163,42 @@ func TestS1PluginNewestVersionOnly(t *testing.T) {
 		}
 		if pluginRoots != 1 {
 			t.Fatalf("S1 exactly one plugin root, got %d", pluginRoots)
+		}
+	})
+}
+
+func TestS1ZcodePluginCacheIsALoadRoot(t *testing.T) {
+	home := baseHome(t)
+	writeSkill(t, home, ".zcode/cli/plugins/cache/official/example/0.4.2/skills",
+		"plugged", "plugged", true, "\n# body\n", "")
+	withHome(t, home, func() {
+		g := buildHome(t)
+		found := false
+		for _, n := range g.Skills {
+			if n.Name == "plugged" {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("S1 zcode plugin cache should be discovered as a load root")
+		}
+	})
+}
+
+func TestS1EnvRelocatedHomeLoads(t *testing.T) {
+	home := baseHome(t)
+	writeSkill(t, home, "custom-codex/skills", "moved", "moved", true, "\n# body\n", "")
+	withHome(t, home, func() {
+		t.Setenv("CODEX_HOME", filepath.Join(home, "custom-codex"))
+		g := buildHome(t)
+		found := false
+		for _, n := range g.Skills {
+			if n.Name == "moved" {
+				found = true
+			}
+		}
+		if !found {
+			t.Fatal("S1 skills under an env-relocated CODEX_HOME should load")
 		}
 	})
 }

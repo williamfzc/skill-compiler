@@ -21,6 +21,7 @@ decisions with lasting value go here; transient actions do not enter the tree.
 | Document | Contents |
 |---|---|
 | [User stories](user-stories.md) | Who uses skillscope, what it solves, what it deliberately refuses |
+| [Load roots](load-roots.md) | Where the scanned-directory list comes from (upstream mirror, divergences, sync policy) |
 | [State graph contract](state-contract.md) | Every field of `state.json`, plus `jq` recipes so an agent does find / explain / health itself |
 
 ## Where to start

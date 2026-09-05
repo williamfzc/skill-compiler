@@ -102,8 +102,13 @@ The compiler reflects the dirs the agent **actually loads**, not every skill on
 the filesystem:
 
 - **agent dirs**: `~/.trae/skills`, `~/.agents/skills`, `~/.claude/skills`,
-  `~/.codex/skills`, etc.
-- **plugin cache**: `~/.trae/plugins/cache`, `~/.claude/plugins/cache`. A plugin
+  `~/.zcode/skills`, etc. -- the list mirrors the community-maintained agent
+  table in [vercel-labs/skills](https://github.com/vercel-labs/skills) (pinned
+  revision), with env-relocated homes (`CODEX_HOME`, `CLAUDE_CONFIG_DIR`, ...)
+  honored too. Provenance and divergences:
+  [docs/load-roots.md](docs/load-roots.md).
+- **plugin cache**: `~/.trae/plugins/cache`, `~/.claude/plugins/cache`,
+  `~/.zcode/cli/plugins/cache`. A plugin
   often has dozens of historical versions coexisting; the agent loads only the
   newest -- the compiler **keeps only the version dir with the newest mtime**,
   otherwise a pile of unloadable zombie versions would appear out of nowhere.

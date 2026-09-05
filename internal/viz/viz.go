@@ -23,12 +23,18 @@ func Mermaid(g *state.Graph) string {
 	ids, names := fileIDs(g)
 	var b strings.Builder
 	b.WriteString("flowchart LR\n")
+	defined := map[string]bool{}
 	for _, sk := range sortedSkills(g) {
 		fmt.Fprintf(&b, "  subgraph %s[\"%s\"]\n", mermaidID(sk), skillName(sk))
 		for _, id := range idsByOwner(g, ids, sk) {
+			defined[id] = true
 			fmt.Fprintf(&b, "    %s[\"%s\"]\n", id, names[id])
 		}
 		b.WriteString("  end\n")
+	}
+	// Endpoints outside any skill are not in a subgraph; define them bare.
+	for _, id := range extraIDs(ids, defined) {
+		fmt.Fprintf(&b, "  %s[\"%s\"]\n", id, names[id])
 	}
 	for _, e := range g.FileEdges {
 		style := "-->"
@@ -45,12 +51,17 @@ func DOT(g *state.Graph) string {
 	ids, names := fileIDs(g)
 	var b strings.Builder
 	b.WriteString("digraph skills {\n  rankdir=LR;\n  node [shape=box, style=rounded];\n")
+	defined := map[string]bool{}
 	for _, sk := range sortedSkills(g) {
 		fmt.Fprintf(&b, "  subgraph cluster_%s {\n    label=%s;\n", dotID(sk), dotQuote(skillName(sk)))
 		for _, id := range idsByOwner(g, ids, sk) {
+			defined[id] = true
 			fmt.Fprintf(&b, "    %s [label=%s];\n", id, dotQuote(names[id]))
 		}
 		b.WriteString("  }\n")
+	}
+	for _, id := range extraIDs(ids, defined) {
+		fmt.Fprintf(&b, "  %s [label=%s];\n", id, dotQuote(names[id]))
 	}
 	for _, e := range g.FileEdges {
 		style := ""
@@ -62,6 +73,20 @@ func DOT(g *state.Graph) string {
 	}
 	b.WriteString("}\n")
 	return b.String()
+}
+
+// extraIDs lists ids not yet defined by a subgraph, in id order.
+func extraIDs(ids map[string]string, defined map[string]bool) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, id := range ids {
+		if !defined[id] && !seen[id] {
+			seen[id] = true
+			out = append(out, id)
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 // HTML renders a self-contained page around the Mermaid text. Rendering
@@ -86,6 +111,9 @@ func HTML(g *state.Graph) string {
 
 // fileIDs assigns a deterministic id (f0, f1, ...) to every file node, sorted
 // by realpath, plus its display name (path relative to the owning skill).
+// Edge endpoints that resolve outside any skill are not file nodes, but they
+// get ids too -- labeled by basename -- so their edges stay visible instead
+// of rendering with an empty endpoint.
 func fileIDs(g *state.Graph) (map[string]string, map[string]string) {
 	ids := map[string]string{}
 	names := map[string]string{}
@@ -98,6 +126,23 @@ func fileIDs(g *state.Graph) (map[string]string, map[string]string) {
 		id := fmt.Sprintf("f%d", i)
 		ids[p] = id
 		names[id] = fileDisplayName(g, p)
+	}
+	var extra []string
+	seen := map[string]bool{}
+	for _, e := range g.FileEdges {
+		for _, p := range []string{e.From, e.To} {
+			if _, ok := ids[p]; ok || seen[p] {
+				continue
+			}
+			seen[p] = true
+			extra = append(extra, p)
+		}
+	}
+	sort.Strings(extra)
+	for i, p := range extra {
+		id := fmt.Sprintf("f%d", len(paths)+i)
+		ids[p] = id
+		names[id] = filepath.Base(p)
 	}
 	return ids, names
 }

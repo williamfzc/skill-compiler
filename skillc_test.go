@@ -682,17 +682,23 @@ func TestSkillFlagIsSkillcOwnPage(t *testing.T) {
 func TestVizRendersGraph(t *testing.T) {
 	root := t.TempDir()
 	mkskill(t, root, "a", "a", true, strp("does a"),
-		"\nsee [b](../b/SKILL.md) and read `notes/plan.md`\n", "")
+		"\nsee [b](../b/SKILL.md) and read `notes/plan.md` and [c](../outside/config.md)\n", "")
 	simpleSkill(t, root, "b", "b")
 	mkfile(t, root, "a/notes/plan.md", "# plan\n")
+	mkfile(t, root, "outside/config.md", "# config\n")
 
 	code, out := runCLI(t, "viz", "--only-root", root, "--format", "mermaid")
 	if code != 0 {
 		t.Fatalf("viz mermaid exits 0, got %d: %s", code, out)
 	}
-	for _, want := range []string{"flowchart", "SKILL.md", "notes/plan.md"} {
+	for _, want := range []string{"flowchart", "SKILL.md", "notes/plan.md", "config.md"} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("mermaid output should contain %q", want)
+		}
+	}
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasSuffix(line, "-->") || strings.HasSuffix(line, "-.->") {
+			t.Fatalf("edge with empty endpoint: %q", line)
 		}
 	}
 

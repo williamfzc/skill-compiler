@@ -1,0 +1,6 @@
+.DS_Store
+# built binary
+/skillc
+# runtime artifacts
+*.state.json
+*.snapshot.json

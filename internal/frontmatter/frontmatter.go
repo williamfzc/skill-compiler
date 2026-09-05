@@ -17,6 +17,20 @@ var blockMarkers = map[string]bool{
 	"|": true, ">": true, "|-": true, ">-": true, "|+": true, ">+": true,
 }
 
+// Body returns the document with a leading frontmatter block removed, so
+// reference extraction sees only the prose an agent reads as the document
+// body; frontmatter is structured data parsed separately.
+func Body(text string) string {
+	if !strings.HasPrefix(text, "---") {
+		return text
+	}
+	parts := strings.SplitN(text, "---", 3)
+	if len(parts) < 3 {
+		return text
+	}
+	return strings.TrimLeft(parts[2], "\n")
+}
+
 // Parse returns (fields, hasFrontmatter). Top-level keys only; folded/literal
 // scalar blocks (|, >, and their chomp variants) are joined into one string.
 func Parse(text string) (map[string]string, bool) {

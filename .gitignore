@@ -4,3 +4,4 @@
 # runtime artifacts
 *.state.json
 *.snapshot.json
+.zcode/

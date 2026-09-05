@@ -1,10 +1,11 @@
-// Package edges derives reference and nesting relationships between skill
-// nodes.
+// Package edges derives skill-node relationships: reference edges between
+// skills and containment edges from directory nesting.
 //
-// Two edge kinds, both derived purely from the nodes and the filesystem:
-//
-//	ref      an md file inside a skill points at another skill (or a file in one)
-//	contains a skill's directory is the nearest-ancestor of another's (nesting)
+// This is the node-level projection. The per-file extraction pass lives in
+// refgraph; here each ref is attributed to the deepest skill owning the file
+// that wrote it (collect.OwnerIndex), and a link to a file inside the
+// authoring skill's own dir produces no edge (it is a self reference, not a
+// relationship between skills).
 //
 // Symlinks form no edge: a symlinked directory shares its target's realpath and
 // is already one node, so the fact lives in provenance / multi_mounted, not
@@ -14,12 +15,12 @@ package edges
 import (
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 
 	"skillscope/internal/collect"
 	"skillscope/internal/paths"
+	"skillscope/internal/refparse"
 )
 
 // Edge is one relationship between two node ids. Ref edges additionally carry
@@ -50,26 +51,7 @@ type ExternalRef struct {
 	Resolved string `json:"resolved"`
 }
 
-// A relative path or bare .md target inside a markdown link.
-var reMDLink = regexp.MustCompile(`\]\((\.\.?/[^)\s]+?|[A-Za-z0-9_][^)\s]*?\.md)\)`)
-var reAnyMDLink = regexp.MustCompile(`!?\[[^\]]*\]\([^)]*\)`)
-var reBacktick = regexp.MustCompile("`[^`]*`")
-
-// reFenceMarker matches a fence delimiter line: optional indentation then
-// three-or-more backticks (capture group 1 = the backtick run).
-var reFenceMarker = regexp.MustCompile(`^\s*(` + "```" + `+)`)
-var reFence = regexp.MustCompile("(?s)```.*?```")
-
-// After backticks/links are stripped, bare relative paths in prose pointing at
-// a skill's internal resources. The leading (?:^|[^\w`]) stands in for the
-// Python version's negative lookbehind, which RE2 does not support.
-var reBare = regexp.MustCompile(`(?:^|[^\w` + "`" + `])(\.\.?/[A-Za-z0-9_./-]+\.(?:md|sh|py|json|ya?ml|txt))`)
-
-// Suites often write skills/<name>/SKILL.md (relative to the current file's dir).
-var reSuite = regexp.MustCompile(`(?:^|[\s` + "`" + `(|])((?:[A-Za-z0-9_.-]+/)*skills/[A-Za-z0-9_.-]+/SKILL\.md)`)
-
-// Build produces ref + contains edges, plus broken and external refs. Ref
-// attribution: a file belongs to "the deepest skill that contains it".
+// Build produces ref + contains edges, plus broken and external refs.
 func Build(nodes map[string]*collect.Node, roots []collect.Root) ([]Edge, []BrokenRef, []ExternalRef) {
 	ownerOf := collect.OwnerIndex(nodes)
 	nodeDirs := map[string]bool{}
@@ -101,90 +83,8 @@ func accessibleDir(node *collect.Node) string {
 	return node.ID
 }
 
-// proseWithoutCode returns the markdown document with all code removed:
-// fenced code blocks (``` ... ```, honoring fence depth so a ````-fenced
-// sample enclosing ``` lines is dropped as one block) and inline-code spans
-// (`...`). A reference only counts in real prose -- a path inside code is an
-// example, command, or sample content, not a document the agent is pointed
-// at, so it must never produce a ref edge or a broken-ref diagnostic.
-func proseWithoutCode(content string) string {
-	lines := strings.Split(content, "\n")
-	var out []string
-	depth := 0
-	for _, l := range lines {
-		if m := reFenceMarker.FindStringSubmatch(l); m != nil {
-			n := len(m[1])
-			if depth == 0 {
-				depth = n
-				continue
-			}
-			if n >= depth && strings.TrimSpace(strings.TrimLeft(l, " \t")[n:]) == "" {
-				depth = 0
-			}
-			continue
-		}
-		if depth > 0 {
-			continue // body of a fenced code block
-		}
-		out = append(out, reBacktick.ReplaceAllString(l, ""))
-	}
-	return strings.Join(out, "\n")
-}
-
-// extractTargets returns the reference target strings a markdown document
-// contains in its prose. All matching runs on code-stripped text: markdown
-// links, bare relative paths, and suite-relative SKILL.md paths inside code
-// samples are examples, not references, and are excluded.
-func extractTargets(content string) map[string]bool {
-	targets := map[string]bool{}
-	prose := proseWithoutCode(content)
-	for _, m := range reMDLink.FindAllStringSubmatch(prose, -1) {
-		targets[m[1]] = true
-	}
-	stripped := reAnyMDLink.ReplaceAllString(prose, "")
-	for _, m := range reBare.FindAllStringSubmatch(stripped, -1) {
-		targets[m[1]] = true
-	}
-	for _, m := range reSuite.FindAllStringSubmatch(stripped, -1) {
-		targets[m[1]] = true
-	}
-	return targets
-}
-
-// resolve resolves one raw link to an existing path, or "". It tries
-// file-relative first, then skill-root-relative, then repo-root-relative
-// (skills write links all three ways). It returns the path component (anchors
-// and queries stripped) and the resolved path.
-func resolve(raw, fromDir, src string, repoRoots []string) (string, string) {
-	pp := raw
-	if i := strings.Index(pp, "#"); i >= 0 {
-		pp = pp[:i]
-	}
-	if i := strings.Index(pp, "?"); i >= 0 {
-		pp = pp[:i]
-	}
-	if pp == "" || strings.HasSuffix(pp, "/") {
-		return pp, ""
-	}
-	resolved := filepath.Clean(filepath.Join(fromDir, pp))
-	if !paths.Exists(resolved) && !strings.HasPrefix(pp, "..") {
-		alt1 := filepath.Clean(filepath.Join(src, pp))
-		if paths.Exists(alt1) {
-			return pp, alt1
-		}
-		for _, rr := range repoRoots {
-			alt := filepath.Clean(filepath.Join(rr, pp))
-			if paths.Exists(alt) {
-				return pp, alt
-			}
-		}
-	}
-	if paths.Exists(resolved) {
-		return pp, resolved
-	}
-	return pp, ""
-}
-
+// refEdges walks every markdown file under every skill and attributes its
+// references to the owning skill.
 func refEdges(nodes map[string]*collect.Node, ownerOf func(string) string,
 	repoRootsByRoot map[string][]string, edges *[]Edge, broken *[]BrokenRef,
 	external *[]ExternalRef) {
@@ -226,60 +126,72 @@ func refEdges(nodes map[string]*collect.Node, ownerOf func(string) string,
 			if src == "" {
 				continue
 			}
-			content := paths.ReadText(fp)
 			fromFile := filepath.Base(fp)
 			if filepath.Dir(rp) != src {
 				fromFile, _ = filepath.Rel(src, rp)
 			}
-
-			raws := make([]string, 0)
-			for t := range extractTargets(content) {
-				raws = append(raws, t)
-			}
-			sort.Strings(raws)
-			for _, raw := range raws {
-				pp, resolvedPath := resolve(raw, filepath.Dir(fp), src, repoRoots)
-				if pp == "" || strings.HasSuffix(pp, "/") {
-					continue
+			for _, t := range refparse.Extract(paths.ReadBytes(fp)) {
+				if t.Quoted {
+					continue // counted only at the file level (refgraph)
 				}
-				if resolvedPath == "" {
-					*broken = append(*broken, BrokenRef{
-						From:     src,
-						FromFile: fromFile,
-						Raw:      raw,
-						Resolved: filepath.Clean(filepath.Join(filepath.Dir(fp), pp)),
-						RealFrom: rp,
-					})
-					continue
+				edge, br, ext, ok := refEdge(t.Raw, src, fromFile, rp, fp, repoRoots, ownerOf)
+				if br != nil {
+					*broken = append(*broken, *br)
 				}
-				tgtOwner := ownerOf(resolvedPath)
-				if tgtOwner == "" {
-					*external = append(*external, ExternalRef{
-						From:     src,
-						FromFile: fromFile,
-						Raw:      raw,
-						Resolved: paths.RealPath(resolvedPath),
-					})
-					continue
+				if ext != nil {
+					*external = append(*external, *ext)
 				}
-				if tgtOwner == src {
-					continue // references a file inside its own dir; no edge
+				if ok {
+					*edges = append(*edges, edge)
 				}
-				isSkillMD := filepath.Base(resolvedPath) == "SKILL.md"
-				*edges = append(*edges, Edge{
-					Kind:            "ref",
-					From:            src,
-					To:              tgtOwner,
-					FromFile:        fromFile,
-					Raw:             raw,
-					TargetIsSkillMD: &isSkillMD,
-				})
 			}
 		}
-		_ = nid
 	}
 }
 
+// refEdge resolves one raw target and classifies it: broken (unresolvable),
+// external (resolves outside any skill), a node edge, or nothing (a resolved
+// reference inside the authoring skill's own dir is a self reference, not a
+// relationship between skills).
+func refEdge(raw, src, fromFile, realFrom, fromFileAbs string,
+	repoRoots []string, ownerOf func(string) string) (Edge, *BrokenRef, *ExternalRef, bool) {
+	pp, resolvedPath := refparse.Resolve(raw, filepath.Dir(fromFileAbs), src, repoRoots)
+	if pp == "" || strings.HasSuffix(pp, "/") {
+		return Edge{}, nil, nil, false
+	}
+	if resolvedPath == "" {
+		return Edge{}, &BrokenRef{
+			From:     src,
+			FromFile: fromFile,
+			Raw:      raw,
+			Resolved: filepath.Clean(filepath.Join(filepath.Dir(fromFileAbs), pp)),
+			RealFrom: realFrom,
+		}, nil, false
+	}
+	tgtOwner := ownerOf(resolvedPath)
+	if tgtOwner == "" {
+		return Edge{}, nil, &ExternalRef{
+			From:     src,
+			FromFile: fromFile,
+			Raw:      raw,
+			Resolved: paths.RealPath(resolvedPath),
+		}, false
+	}
+	if tgtOwner == src {
+		return Edge{}, nil, nil, false
+	}
+	isSkillMD := filepath.Base(resolvedPath) == "SKILL.md"
+	return Edge{
+		Kind:            "ref",
+		From:            src,
+		To:              tgtOwner,
+		FromFile:        fromFile,
+		Raw:             raw,
+		TargetIsSkillMD: &isSkillMD,
+	}, nil, nil, true
+}
+
+// containsEdges connects each node to its nearest ancestor node.
 func containsEdges(nodeDirs map[string]bool, edges *[]Edge) {
 	dirs := make([]string, 0, len(nodeDirs))
 	for d := range nodeDirs {

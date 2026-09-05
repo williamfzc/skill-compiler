@@ -1,16 +1,13 @@
 // Package viz renders the compiled state graph for human viewing.
 //
-// Three formats, one deterministic layout each: Mermaid flowchart text,
-// Graphviz DOT, and a self-contained HTML page that wraps the Mermaid text
-// (open it in a browser; rendering uses the Mermaid CDN, and offline the raw
-// text still shows). Files are grouped under their owning skill; quoted
-// references (inline-code paths) render dashed -- a weaker, resolved-only
-// kind of link.
+// Three formats: an interactive force-directed network as self-contained
+// HTML (the default for `viz --out`), Mermaid flowchart text, and Graphviz
+// DOT. Files are grouped under their owning skill; quoted references
+// (inline-code paths) render dashed -- a weaker, resolved-only kind of link.
 package viz
 
 import (
 	"fmt"
-	"html"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -87,26 +84,6 @@ func extraIDs(ids map[string]string, defined map[string]bool) []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-// HTML renders a self-contained page around the Mermaid text. Rendering
-// needs the Mermaid CDN; offline, the raw text remains visible in the page.
-func HTML(g *state.Graph) string {
-	s := g.Summary
-	mm := Mermaid(g)
-	var b strings.Builder
-	b.WriteString("<!doctype html>\n<meta charset=\"utf-8\">\n")
-	b.WriteString("<title>skillc graph</title>\n")
-	b.WriteString("<style>body{font-family:-apple-system,sans-serif;margin:2rem;background:#fafafa}" +
-		".mermaid{background:#fff;border:1px solid #ddd;border-radius:8px;padding:1rem}</style>\n")
-	fmt.Fprintf(&b, "<h1>skillc graph</h1>\n<p>%d skills, %d files, %d file edges, %d broken refs</p>\n",
-		s.SkillCount, s.FileCount, s.FileEdgeCount, s.BrokenRefCount)
-	b.WriteString("<div class=\"mermaid\">\n")
-	b.WriteString(html.EscapeString(mm))
-	b.WriteString("\n</div>\n")
-	b.WriteString("<script src=\"https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js\"></script>\n")
-	b.WriteString("<script>mermaid.initialize({startOnLoad:true,maxTextSize:9000000});</script>\n")
-	return b.String()
 }
 
 // fileIDs assigns a deterministic id (f0, f1, ...) to every file node, sorted

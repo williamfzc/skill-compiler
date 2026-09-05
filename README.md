@@ -66,7 +66,7 @@ go build -o skillc ./cmd/skillc      # or: go install ./cmd/skillc
 ./skillc check --json                         # machine readable
 ./skillc query --skill <name>                 # all relationships of one skill
 ./skillc diff --before a.json --after b.json  # compare, flag regressions
-./skillc viz --out graph.html                 # render the graph to open in a browser
+./skillc viz --out graph.html                 # interactive network view, open in a browser
 ./skillc viz --format mermaid                 # or emit Mermaid / DOT text
 ```
 

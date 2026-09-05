@@ -715,7 +715,7 @@ func TestVizRendersGraph(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"<!doctype html>", "mermaid", "notes/plan.md"} {
+	for _, want := range []string{"<!doctype html>", "network-canvas", "notes/plan.md", "config.md"} {
 		if !strings.Contains(string(html), want) {
 			t.Fatalf("html should contain %q", want)
 		}

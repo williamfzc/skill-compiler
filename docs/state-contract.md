@@ -21,7 +21,9 @@ snapshots correctly.
 | `scan_seconds` | Wall-clock compile time. |
 | `roots` | The load roots that were scanned. |
 | `skills` | The nodes, an **object keyed by realpath**. |
-| `edges` | `ref` and `contains` relationships. |
+| `files` | The file-level graph nodes: every markdown file inside a skill, keyed by realpath. |
+| `file_edges` | Per-file references: doc-to-doc and doc-to-skill links, including within one skill. |
+| `edges` | `ref` and `contains` relationships (the skill-node projection of `file_edges`). |
 | `broken_refs` | References that did not resolve (one row per physical file). |
 | `external_refs` | References resolving to an existing file outside any skill. |
 | `identities` | `multi_mounted` and `same_content` groupings. |
@@ -55,6 +57,22 @@ snapshots correctly.
 
 `refs_out` / `contains` / `contained_by` hold **node ids** (realpaths); resolve
 them back through `.skills[id].name` (recipe R2).
+
+## `files` / `file_edges` -- the file-level graph
+
+Every markdown file inside a skill is a node; every reference it writes is an
+edge, including links between two docs of the same skill.
+
+- **`files{}`**: keyed by realpath: `{id, owner (skill id), ext, bytes,
+  out_count, in_count}`. An **orphan** is a node with `in_count == 0 &&
+  out_count == 0`; a file other docs point at is load-bearing.
+- **`file_edges[]`**: `{from, to, from_skill, to_skill, raw, quoted}`. `to` is
+  the resolved target's realpath; `to_skill` is `""` when the target resolves
+  outside any skill. `quoted: true` means the reference was written in inline
+  code -- it counts only because it resolves.
+- **Severity rule**: a broken link written in `SKILL.md` is an error; one
+  written in any other doc of the skill is a warn (the same call rustdoc makes
+  with `broken_intra_doc_links`). Only errors fail `check`.
 
 ## Other collections
 
@@ -137,6 +155,30 @@ jq -r '.summary
 ```bash
 jq -r '.diagnostics[] | select(.severity=="error") | "\(.code)\t\(.where)"' "$S" \
   | sort | uniq -c | sort -rn
+```
+
+### R7 -- orphan docs (Foam's orphans: no inbound, no outbound links)
+
+```bash
+jq -r '.files[] | select(.in_count==0 and .out_count==0)
+  | "\(.owner|sub("^.*/skills/";""))  \(.id|sub("^.*/skills/";""))"' "$S"
+```
+
+### R8 -- what breaks if I move this file (per-file blast radius)
+
+```bash
+jq -r --arg f "references/index.md" '
+  .file_edges[] | select(.from | endswith("/" + $f)) | "  -> \(.to)"
+' "$S"
+jq -r --arg f "references/index.md" '
+  .file_edges[] | select(.to | endswith("/" + $f)) | "  <- \(.from)"
+' "$S"
+```
+
+### R9 -- load-bearing docs (most-referenced files)
+
+```bash
+jq -r '.files[] | select(.in_count>0) | "\(.in_count)\t\(.id)"' "$S" | sort -rn | head
 ```
 
 ## Working with an agent

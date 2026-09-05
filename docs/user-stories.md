@@ -58,8 +58,15 @@ Acceptance:
 - Exit code 1 when any error is present, so it drops straight into CI /
   pre-commit.
 - Reference resolution fits real-world writing: when a file-relative path does
-  not resolve, retry skill-root-relative then repo-root-relative; a name in
-  backticks is **not** a reference (the agent gets no path from it).
+  not resolve, retry skill-root-relative then repo-root-relative; a backtick
+  path counts when it resolves and stays silent when it does not.
+- **Severity follows the writing file**: a broken link in `SKILL.md` is an
+  error; the same fault in a reference doc is a warn -- editing a reference
+  doc cannot turn the whole gate red over a stale link.
+- **The file-level graph tells the author what their docs are worth**: every
+  markdown file inside a skill carries `in_count` / `out_count` in `files`,
+  so orphans (unreferenced, unreferencing docs) and the blast radius of a
+  rename are one `jq` away (recipes R7-R9 in the state contract).
 
 ### S3 -- judge whether this change made the tree worse
 

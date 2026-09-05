@@ -16,6 +16,7 @@ import (
 	"skillscope/internal/cli"
 	"skillscope/internal/collect"
 	"skillscope/internal/diagnostics"
+	"skillscope/internal/paths"
 	"skillscope/internal/state"
 )
 
@@ -238,19 +239,128 @@ func TestSkillRootRelativeRef(t *testing.T) {
 	}
 }
 
-func TestBacktickNotARef(t *testing.T) {
+// A path-shaped inline-code span is a reference when it resolves (rustdoc
+// treats backticks as links too); an unresolvable one -- an example filename
+// like TODO.md -- stays silent rather than becoming a broken ref.
+func TestBacktickTwoTier(t *testing.T) {
 	root := t.TempDir()
 	mkskill(t, root, "a", "a", true, strp("does a"),
-		"\nmention `../b/SKILL.md` in backticks\n", "")
+		"\nsee `../b/SKILL.md` and mention `TODO.md` in backticks\n", "")
 	simpleSkill(t, root, "b", "b")
 	g := compileRoot(t, root)
+	refs := 0
+	for _, e := range g.Edges {
+		if e.Kind != "ref" {
+			continue
+		}
+		refs++
+		if !strings.HasSuffix(e.From, "/a") || !strings.HasSuffix(e.To, "/b") {
+			t.Fatalf("quoted ref should run a -> b, got %+v", e)
+		}
+	}
+	if refs != 1 {
+		t.Fatalf("resolvable backtick path should be exactly one ref edge, got %d", refs)
+	}
+	if g.Summary.BrokenRefCount != 0 {
+		t.Fatal("unresolvable backtick mention stays silent, not a broken ref")
+	}
+}
+
+// The file-level graph: a doc inside a skill referencing another doc of the
+// same skill is a file edge with in/out counts (previously dropped silently).
+// It is a self reference, so no node-level edge appears.
+func TestFileGraphIntraSkillDoc(t *testing.T) {
+	root := t.TempDir()
+	simpleSkill(t, root, "a", "a")
+	mkfile(t, root, "a/references/index.md", "see [g](references/deep/guide.md)\n")
+	mkfile(t, root, "a/references/deep/guide.md", "# guide\n")
+	g := compileRoot(t, root)
+	idx := paths.RealPath(filepath.Join(root, "a/references/index.md"))
+	guide := paths.RealPath(filepath.Join(root, "a/references/deep/guide.md"))
+	if len(g.Files) != 3 {
+		t.Fatalf("three md files should be graph nodes, got %d", len(g.Files))
+	}
+	if g.Files[guide].InCount != 1 || g.Files[idx].OutCount != 1 {
+		t.Fatalf("file counts wrong: index out=%d guide in=%d",
+			g.Files[idx].OutCount, g.Files[guide].InCount)
+	}
+	if len(g.FileEdges) != 1 {
+		t.Fatalf("want one file edge, got %+v", g.FileEdges)
+	}
+	fe := g.FileEdges[0]
+	if fe.From != idx || fe.To != guide || fe.Quoted {
+		t.Fatalf("wrong file edge: %+v", fe)
+	}
+	if fe.FromSkill != fe.ToSkill || !strings.HasSuffix(fe.FromSkill, "/a") {
+		t.Fatalf("file edge should stay inside skill a: %+v", fe)
+	}
 	for _, e := range g.Edges {
 		if e.Kind == "ref" {
-			t.Fatalf("backtick mention is not an edge, got %+v", e)
+			t.Fatalf("intra-skill doc link is a self reference, no node edge: %+v", e)
 		}
 	}
 	if g.Summary.BrokenRefCount != 0 {
-		t.Fatal("backtick mention is not a broken ref")
+		t.Fatal("skill-root-relative doc link should resolve")
+	}
+}
+
+// A quoted path that resolves inside the skill becomes a quoted file edge.
+func TestQuotedFileEdge(t *testing.T) {
+	root := t.TempDir()
+	mkskill(t, root, "a", "a", true, strp("does a"),
+		"\nfirst read `notes/plan.md`\n", "")
+	mkfile(t, root, "a/notes/plan.md", "# plan\n")
+	g := compileRoot(t, root)
+	if len(g.FileEdges) != 1 || !g.FileEdges[0].Quoted {
+		t.Fatalf("want one quoted file edge, got %+v", g.FileEdges)
+	}
+	if !strings.HasSuffix(g.FileEdges[0].To, "/notes/plan.md") {
+		t.Fatalf("quoted edge should target plan.md: %+v", g.FileEdges[0])
+	}
+}
+
+// Severity split: a broken link written in SKILL.md is an error; the same
+// fault in a reference doc is a warn.
+func TestBrokenRefSeverityBySource(t *testing.T) {
+	root := t.TempDir()
+	simpleSkill(t, root, "a", "a")
+	mkskill(t, root, "b", "b", true, strp("does b"),
+		"\nsee [x](references/gone.md)\n", "")
+	mkfile(t, root, "b/references/old.md", "see [y](missing.md)\n")
+	g := compileRoot(t, root)
+	errs, warns := 0, 0
+	for _, d := range g.Diagnostics {
+		if d.Code != "BROKEN_REF" {
+			continue
+		}
+		switch d.Severity {
+		case "error":
+			errs++
+		case "warn":
+			warns++
+		}
+	}
+	if errs != 1 || warns != 1 {
+		t.Fatalf("want 1 error (SKILL.md) + 1 warn (reference doc), got %d/%d", errs, warns)
+	}
+}
+
+// A warn-only tree (broken link in a reference doc) does not fail the gate.
+func TestDocBrokenRefDoesNotFailCheck(t *testing.T) {
+	root := t.TempDir()
+	simpleSkill(t, root, "a", "a")
+	mkfile(t, root, "a/references/old.md", "see [y](missing.md)\n")
+	code, out := runCLI(t, "check", "--only-root", root, "--json")
+	if code != 0 {
+		t.Fatalf("warn-only tree should exit 0, got %d: %s", code, out)
+	}
+	var parsed map[string]any
+	if err := json.Unmarshal([]byte(out), &parsed); err != nil {
+		t.Fatal(err)
+	}
+	summary := parsed["summary"].(map[string]any)
+	if summary["error_count"].(float64) != 0 || summary["warn_count"].(float64) != 1 {
+		t.Fatalf("want 0 errors + 1 warn, got %v", summary)
 	}
 }
 

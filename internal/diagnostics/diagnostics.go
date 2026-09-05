@@ -6,13 +6,14 @@
 package diagnostics
 
 import (
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
 
 	"skillscope/internal/analysis"
 	"skillscope/internal/collect"
-	"skillscope/internal/edges"
+	"skillscope/internal/refgraph"
 	"skillscope/internal/paths"
 )
 
@@ -29,7 +30,7 @@ var sevOrder = map[string]int{"error": 0, "warn": 1, "info": 2}
 
 // Diagnose converts broken refs, node facts, and collisions into ranked
 // diagnostics.
-func Diagnose(nodes map[string]*collect.Node, broken []edges.BrokenRef,
+func Diagnose(nodes map[string]*collect.Node, broken []refgraph.BrokenRef,
 	collisions []analysis.Collision) []Diagnostic {
 	d := []Diagnostic{}
 
@@ -47,8 +48,16 @@ func Diagnose(nodes map[string]*collect.Node, broken []edges.BrokenRef,
 	}
 
 	for _, b := range broken {
+		// Severity follows the writing file: a broken link in SKILL.md breaks
+		// the page the loader reads (error); one in a reference doc degrades
+		// only when the agent follows it (warn) -- the same call rustdoc
+		// makes with its broken_intra_doc_links lint.
+		sev := "warn"
+		if filepath.Base(b.FromFile) == "SKILL.md" {
+			sev = "error"
+		}
 		d = append(d, Diagnostic{
-			Severity: "error", Code: "BROKEN_REF", Skill: b.From,
+			Severity: sev, Code: "BROKEN_REF", Skill: b.From,
 			Where:  where(b.From),
 			Detail: b.FromFile + " has an unresolvable reference: " + b.Raw,
 		})

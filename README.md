@@ -141,13 +141,28 @@ compared and it refuses with exit code 2 rather than silently miscomputing.
 
 ## Reference-resolution trade-offs
 
-When extracting references, only resolvable links count -- **a name in backticks
-is not a reference**, since the agent gets no path from it. Resolution order:
-file-relative first, then retry skill-root-relative and repo-root-relative (many
-skills write links relative to the skill root, e.g. referencing
-`references/deep/guide.md` from `references/index.md`). A ref to an existing file
-outside the skill root is recorded as `external_refs`: still checked for
-existence, but not counted as broken.
+Extraction is AST-based (goldmark, the CommonMark standard), so fenced code
+blocks and inline code are excluded by the parser, not by regex guesswork.
+Two tiers of references come out of that:
+
+- **Markdown links and bare relative paths in prose** are references; an
+  unresolvable one is a broken ref -- an error when written in `SKILL.md`, a
+  warn when written in any other doc of the skill (the same call rustdoc makes
+  with its broken-intra-doc-links lint). Only errors fail `check`.
+- **A path in inline code counts when it resolves** (rustdoc treats backticks
+  as links too): the agent really will read `qa/look-mechanics.md`. An
+  unresolvable one stays silent -- an example filename like `TODO.md` is not a
+  fault. Resolution order: file-relative first, then skill-root-relative,
+  then repo-root-relative. A ref to an existing file outside the skill root
+  is recorded as `external_refs`: still checked for existence, but not
+  counted as broken.
+
+Every markdown file inside a skill is also compiled as a graph node with
+per-file out-edges (`files` / `file_edges` in the state), so doc-to-doc links
+inside one skill are visible -- see
+[docs/ref-graph.md](docs/ref-graph.md) for the design and
+[docs/state-contract.md](docs/state-contract.md) for recipes (orphans,
+blast radius).
 
 ## Design principle
 
@@ -169,9 +184,11 @@ cmd/skillc/main.go        thin entry point (forwards to internal/cli)
 internal/
   paths/        foundation: path expansion, reads, pruning, symlink-aware walk
   frontmatter/  parse SKILL.md frontmatter
+  refparse/     goldmark-based reference extraction from markdown
   roots/        discover load roots (agent dirs + newest plugin version)
   collect/      walk roots into nodes, dedup by realpath, owner index
-  edges/        extract references and nesting into ref / contains edges
+  refgraph/     file-level reference graph (files, file_edges, broken/external)
+  edges/        node-level projection: ref edges between skills + nesting
   analysis/     refs-in counts, identity groups, name collisions
   diagnostics/  turn facts into severity-ranked diagnostics
   state/        compile everything into one state graph + summary

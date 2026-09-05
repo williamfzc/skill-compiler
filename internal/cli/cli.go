@@ -206,10 +206,10 @@ func cmdBuild(rest []string) int {
 	fp.Close()
 	s := g.Summary
 	fmt.Printf("compiled -> %s (%.2fs)\n", out, g.ScanSeconds)
-	fmt.Printf("  roots %d  skills %d  edges %d %v\n",
-		s.RootCount, s.SkillCount, s.EdgeCount, s.EdgesByKind)
-	fmt.Printf("  broken %d  collisions %d  error %d  warn %d\n",
-		s.BrokenRefCount, s.NameCollisionCount, s.ErrorCount, s.WarnCount)
+	fmt.Printf("  roots %d  skills %d  edges %d %v  file edges %d\n",
+		s.RootCount, s.SkillCount, s.EdgeCount, s.EdgesByKind, s.FileEdgeCount)
+	fmt.Printf("  files %d  broken %d  collisions %d  error %d  warn %d\n",
+		s.FileCount, s.BrokenRefCount, s.NameCollisionCount, s.ErrorCount, s.WarnCount)
 	return 0
 }
 

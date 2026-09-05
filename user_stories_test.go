@@ -407,7 +407,8 @@ func TestS4StateExposesConsumerContract(t *testing.T) {
 		if err := json.Unmarshal(raw, &top); err != nil {
 			t.Fatal(err)
 		}
-		for _, key := range []string{"schema", "roots", "skills", "edges", "broken_refs",
+		for _, key := range []string{"schema", "roots", "skills", "edges", "files",
+			"file_edges", "broken_refs",
 			"external_refs", "identities", "name_collisions", "diagnostics", "summary"} {
 			if _, ok := top[key]; !ok {
 				t.Fatalf("S4 state missing top-level field %s", key)

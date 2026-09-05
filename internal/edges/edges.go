@@ -1,11 +1,11 @@
-// Package edges derives skill-node relationships: reference edges between
-// skills and containment edges from directory nesting.
+// Package edges derives skill-node relationships from the file-level
+// reference graph and directory nesting.
 //
 // This is the node-level projection. The per-file extraction pass lives in
-// refgraph; here each ref is attributed to the deepest skill owning the file
-// that wrote it (collect.OwnerIndex), and a link to a file inside the
-// authoring skill's own dir produces no edge (it is a self reference, not a
-// relationship between skills).
+// refgraph; here each file edge is attributed to the deepest skill owning the
+// file that wrote it (collect.OwnerIndex). A reference whose target sits in
+// the authoring skill's own dir is a self reference, not a relationship
+// between skills, so it produces no node edge.
 //
 // Symlinks form no edge: a symlinked directory shares its target's realpath and
 // is already one node, so the fact lives in provenance / multi_mounted, not
@@ -19,8 +19,7 @@ import (
 	"strings"
 
 	"skillscope/internal/collect"
-	"skillscope/internal/paths"
-	"skillscope/internal/refparse"
+	"skillscope/internal/refgraph"
 )
 
 // Edge is one relationship between two node ids. Ref edges additionally carry
@@ -34,161 +33,56 @@ type Edge struct {
 	TargetIsSkillMD *bool  `json:"target_is_skill_md,omitempty"`
 }
 
-// BrokenRef is a reference that did not resolve to any existing path.
-type BrokenRef struct {
-	From     string `json:"from"`
-	FromFile string `json:"from_file"`
-	Raw      string `json:"raw"`
-	Resolved string `json:"resolved"`
-	RealFrom string `json:"real_from"`
-}
-
-// ExternalRef is a reference resolving to an existing file outside any skill.
-type ExternalRef struct {
-	From     string `json:"from"`
-	FromFile string `json:"from_file"`
-	Raw      string `json:"raw"`
-	Resolved string `json:"resolved"`
-}
-
-// Build produces ref + contains edges, plus broken and external refs.
-func Build(nodes map[string]*collect.Node, roots []collect.Root) ([]Edge, []BrokenRef, []ExternalRef) {
-	ownerOf := collect.OwnerIndex(nodes)
+// Build projects the file-level reference graph onto skill nodes and adds
+// contains edges from directory nesting.
+func Build(nodes map[string]*collect.Node, fg refgraph.Result) []Edge {
+	var edges []Edge
+	refEdges(fg, &edges)
 	nodeDirs := map[string]bool{}
 	for d := range nodes {
 		nodeDirs[d] = true
 	}
-	repoRootsByRoot := map[string][]string{}
-	for _, r := range roots {
-		repoRootsByRoot[r.Path] = paths.FindRepoRoots(r.Path)
-	}
-
-	var edges []Edge
-	var broken []BrokenRef
-	var external []ExternalRef
-	refEdges(nodes, ownerOf, repoRootsByRoot, &edges, &broken, &external)
 	containsEdges(nodeDirs, &edges)
-	return edges, broken, external
+	return edges
 }
 
-// accessibleDir picks a really-existing path to scan (prefer provenance, fall
-// back to id).
-func accessibleDir(node *collect.Node) string {
-	for _, prov := range node.Provenance {
-		cand := filepath.Join(prov.Root, prov.Rel)
-		if info, err := os.Stat(cand); err == nil && info.IsDir() {
-			return cand
+// refEdges folds file edges into node edges, deduped per writing file. The
+// input is sorted, so the output order is deterministic.
+func refEdges(fg refgraph.Result, edges *[]Edge) {
+	seen := map[string]bool{}
+	for _, fe := range fg.Edges {
+		if fe.ToSkill == "" || fe.ToSkill == fe.FromSkill {
+			continue // outside any skill, or a self reference
 		}
-	}
-	return node.ID
-}
-
-// refEdges walks every markdown file under every skill and attributes its
-// references to the owning skill.
-func refEdges(nodes map[string]*collect.Node, ownerOf func(string) string,
-	repoRootsByRoot map[string][]string, edges *[]Edge, broken *[]BrokenRef,
-	external *[]ExternalRef) {
-	scanned := map[string]bool{}
-	nodeIDs := make([]string, 0, len(nodes))
-	for nid := range nodes {
-		nodeIDs = append(nodeIDs, nid)
-	}
-	sort.Strings(nodeIDs)
-	for _, nid := range nodeIDs {
-		node := nodes[nid]
-		if node.BrokenSymlink {
+		fromFile := fromFileRel(fg, fe)
+		key := fe.FromSkill + "\x00" + fromFile + "\x00" + fe.Raw
+		if seen[key] {
 			continue
 		}
-		access := accessibleDir(node)
-		repoRoots := repoRootsByRoot[node.Provenance[0].Root]
-
-		var mdFiles []string
-		paths.WalkFollow(access, func(dir string, names []string) bool {
-			for _, n := range names {
-				if strings.HasSuffix(n, ".md") {
-					full := filepath.Join(dir, n)
-					if info, err := os.Lstat(full); err == nil && !info.IsDir() {
-						mdFiles = append(mdFiles, full)
-					}
-				}
-			}
-			return false
+		seen[key] = true
+		isSkillMD := filepath.Base(fe.To) == "SKILL.md"
+		*edges = append(*edges, Edge{
+			Kind:            "ref",
+			From:            fe.FromSkill,
+			To:              fe.ToSkill,
+			FromFile:        fromFile,
+			Raw:             fe.Raw,
+			TargetIsSkillMD: &isSkillMD,
 		})
-		sort.Strings(mdFiles)
-
-		for _, fp := range mdFiles {
-			rp := paths.RealPath(fp)
-			if scanned[rp] {
-				continue
-			}
-			scanned[rp] = true
-			src := ownerOf(fp) // deepest skill owning this md file
-			if src == "" {
-				continue
-			}
-			fromFile := filepath.Base(fp)
-			if filepath.Dir(rp) != src {
-				fromFile, _ = filepath.Rel(src, rp)
-			}
-			for _, t := range refparse.Extract(paths.ReadBytes(fp)) {
-				if t.Quoted {
-					continue // counted only at the file level (refgraph)
-				}
-				edge, br, ext, ok := refEdge(t.Raw, src, fromFile, rp, fp, repoRoots, ownerOf)
-				if br != nil {
-					*broken = append(*broken, *br)
-				}
-				if ext != nil {
-					*external = append(*external, *ext)
-				}
-				if ok {
-					*edges = append(*edges, edge)
-				}
-			}
-		}
 	}
 }
 
-// refEdge resolves one raw target and classifies it: broken (unresolvable),
-// external (resolves outside any skill), a node edge, or nothing (a resolved
-// reference inside the authoring skill's own dir is a self reference, not a
-// relationship between skills).
-func refEdge(raw, src, fromFile, realFrom, fromFileAbs string,
-	repoRoots []string, ownerOf func(string) string) (Edge, *BrokenRef, *ExternalRef, bool) {
-	pp, resolvedPath := refparse.Resolve(raw, filepath.Dir(fromFileAbs), src, repoRoots)
-	if pp == "" || strings.HasSuffix(pp, "/") {
-		return Edge{}, nil, nil, false
+// fromFileRel renders the writing file relative to its owning skill root.
+func fromFileRel(fg refgraph.Result, fe refgraph.FileEdge) string {
+	fn := fg.Files[fe.From]
+	if fn == nil {
+		return filepath.Base(fe.From)
 	}
-	if resolvedPath == "" {
-		return Edge{}, &BrokenRef{
-			From:     src,
-			FromFile: fromFile,
-			Raw:      raw,
-			Resolved: filepath.Clean(filepath.Join(filepath.Dir(fromFileAbs), pp)),
-			RealFrom: realFrom,
-		}, nil, false
+	if fn.Owner == filepath.Dir(fe.From) {
+		return filepath.Base(fe.From)
 	}
-	tgtOwner := ownerOf(resolvedPath)
-	if tgtOwner == "" {
-		return Edge{}, nil, &ExternalRef{
-			From:     src,
-			FromFile: fromFile,
-			Raw:      raw,
-			Resolved: paths.RealPath(resolvedPath),
-		}, false
-	}
-	if tgtOwner == src {
-		return Edge{}, nil, nil, false
-	}
-	isSkillMD := filepath.Base(resolvedPath) == "SKILL.md"
-	return Edge{
-		Kind:            "ref",
-		From:            src,
-		To:              tgtOwner,
-		FromFile:        fromFile,
-		Raw:             raw,
-		TargetIsSkillMD: &isSkillMD,
-	}, nil, nil, true
+	rel, _ := filepath.Rel(fn.Owner, fe.From)
+	return rel
 }
 
 // containsEdges connects each node to its nearest ancestor node.

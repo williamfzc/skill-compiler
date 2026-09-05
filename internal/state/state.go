@@ -13,12 +13,13 @@ import (
 	"skillscope/internal/collect"
 	"skillscope/internal/diagnostics"
 	"skillscope/internal/edges"
+	"skillscope/internal/refgraph"
 	"skillscope/internal/roots"
 )
 
 // Schema is the state format version. diff refuses two files whose Schema
 // differs.
-const Schema = 3
+const Schema = 4
 
 // RootMeta is one scanned root in the emitted state.
 type RootMeta struct {
@@ -34,6 +35,8 @@ type Summary struct {
 	ResidentDescChars      int            `json:"resident_desc_chars"`
 	EdgeCount              int            `json:"edge_count"`
 	EdgesByKind            map[string]int `json:"edges_by_kind"`
+	FileCount              int            `json:"file_count"`
+	FileEdgeCount          int            `json:"file_edge_count"`
 	BrokenRefCount         int            `json:"broken_ref_count"`
 	ExternalRefCount       int            `json:"external_ref_count"`
 	BrokenSymlinkCount     int            `json:"broken_symlink_count"`
@@ -51,9 +54,11 @@ type Graph struct {
 	ScanSeconds    float64                  `json:"scan_seconds"`
 	Roots          []RootMeta               `json:"roots"`
 	Skills         map[string]*collect.Node `json:"skills"`
+	Files          map[string]*refgraph.FileNode `json:"files"`
+	FileEdges      []refgraph.FileEdge      `json:"file_edges"`
 	Edges          []edges.Edge             `json:"edges"`
-	BrokenRefs     []edges.BrokenRef        `json:"broken_refs"`
-	ExternalRefs   []edges.ExternalRef      `json:"external_refs"`
+	BrokenRefs     []refgraph.BrokenRef     `json:"broken_refs"`
+	ExternalRefs   []refgraph.ExternalRef   `json:"external_refs"`
 	Identities     analysis.Identities      `json:"identities"`
 	NameCollisions []analysis.Collision     `json:"name_collisions"`
 	Diagnostics    []diagnostics.Diagnostic `json:"diagnostics"`
@@ -65,11 +70,12 @@ func Compile(extraRoots []string, onlyRoots []string) *Graph {
 	t0 := time.Now()
 	discovered := roots.Discover(extraRoots, onlyRoots)
 	nodes := collect.CollectSkills(discovered)
-	edgelist, broken, external := edges.Build(nodes, discovered)
+	fg := refgraph.Build(nodes, discovered)
+	edgelist := edges.Build(nodes, fg)
 	analysis.ComputeRefsIn(nodes, edgelist)
 	identities := analysis.GroupIdentities(nodes)
 	collisions := analysis.DetectNameCollisions(nodes)
-	diags := diagnostics.Diagnose(nodes, broken, collisions)
+	diags := diagnostics.Diagnose(nodes, fg.Broken, collisions)
 
 	rootsMeta := make([]RootMeta, 0, len(discovered))
 	for _, r := range discovered {
@@ -89,11 +95,17 @@ func Compile(extraRoots []string, onlyRoots []string) *Graph {
 	if edgelist == nil {
 		edgelist = []edges.Edge{}
 	}
-	if broken == nil {
-		broken = []edges.BrokenRef{}
+	if fg.Edges == nil {
+		fg.Edges = []refgraph.FileEdge{}
 	}
-	if external == nil {
-		external = []edges.ExternalRef{}
+	if fg.Files == nil {
+		fg.Files = map[string]*refgraph.FileNode{}
+	}
+	if fg.Broken == nil {
+		fg.Broken = []refgraph.BrokenRef{}
+	}
+	if fg.External == nil {
+		fg.External = []refgraph.ExternalRef{}
 	}
 	if collisions == nil {
 		collisions = []analysis.Collision{}
@@ -107,14 +119,16 @@ func Compile(extraRoots []string, onlyRoots []string) *Graph {
 		ScanSeconds:    float64(int(elapsed*100+0.5)) / 100,
 		Roots:          rootsMeta,
 		Skills:         nodes,
+		Files:          fg.Files,
+		FileEdges:      fg.Edges,
 		Edges:          edgelist,
-		BrokenRefs:     broken,
-		ExternalRefs:   external,
+		BrokenRefs:     fg.Broken,
+		ExternalRefs:   fg.External,
 		Identities:     identities,
 		NameCollisions: collisions,
 		Diagnostics:    diags,
 	}
-	g.Summary = Summarize(rootsMeta, nodes, edgelist, broken, external, identities, collisions, diags)
+	g.Summary = Summarize(rootsMeta, nodes, edgelist, fg, identities, collisions, diags)
 	return g
 }
 
@@ -125,7 +139,7 @@ func DiscoverRoots(extra, only []string) []collect.Root {
 
 // Summarize computes the scalar health counts.
 func Summarize(rmeta []RootMeta, nodes map[string]*collect.Node, edgelist []edges.Edge,
-	broken []edges.BrokenRef, external []edges.ExternalRef,
+	fg refgraph.Result,
 	identities analysis.Identities, collisions []analysis.Collision,
 	diags []diagnostics.Diagnostic) Summary {
 	ek := map[string]int{}
@@ -154,8 +168,10 @@ func Summarize(rmeta []RootMeta, nodes map[string]*collect.Node, edgelist []edge
 		ResidentDescChars:      descChars,
 		EdgeCount:              len(edgelist),
 		EdgesByKind:            ek,
-		BrokenRefCount:         len(broken),
-		ExternalRefCount:       len(external),
+		FileCount:              len(fg.Files),
+		FileEdgeCount:          len(fg.Edges),
+		BrokenRefCount:         len(fg.Broken),
+		ExternalRefCount:       len(fg.External),
 		BrokenSymlinkCount:     brokenSymlinks,
 		MultiMountedGroups:     len(identities.MultiMounted),
 		DuplicateContentGroups: len(identities.SameContent),

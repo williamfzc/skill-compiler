@@ -41,7 +41,7 @@ type Target struct {
 // shape is safe there.
 var reBare = regexp.MustCompile(`(?:^|[^\w` + "`" + `])(\.\.?/[A-Za-z0-9_./-]+\.(?:md|sh|py|json|ya?ml|txt))`)
 var reSuite = regexp.MustCompile(`(?:^|[\s` + "`" + `(|])((?:[A-Za-z0-9_.-]+/)*skills/[A-Za-z0-9_.-]+/SKILL\.md)`)
-var reQuoted = regexp.MustCompile(`[A-Za-z0-9_][A-Za-z0-9_.@+-]*(?:/[A-Za-z0-9_.@+-]+)*\.(?:md|sh|py|json|ya?ml|txt)`)
+var reQuoted = regexp.MustCompile(`(?:\.\.?/)?[A-Za-z0-9_][A-Za-z0-9_.@+-]*(?:/[A-Za-z0-9_.@+-]+)*\.(?:md|sh|py|json|ya?ml|txt)`)
 var reScheme = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*:`)
 
 // Extract returns the reference candidates a markdown document contains,

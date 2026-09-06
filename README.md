@@ -124,8 +124,6 @@ go install github.com/williamfzc/skill-compiler/cmd/skillc@latest
 ## Usage
 
 ```bash
-go build -o skillc ./cmd/skillc      # or: go install ./cmd/skillc for a local dev build
-
 ./skillc roots                                # list discovered load roots only
 ./skillc build --out state.json               # compile into the state graph
 ./skillc check                                # compile + diagnostics (exit 1 on error)
@@ -133,61 +131,29 @@ go build -o skillc ./cmd/skillc      # or: go install ./cmd/skillc for a local d
 ./skillc query --skill <name>                 # all relationships of one skill
 ./skillc diff --before a.json --after b.json  # compare, flag regressions
 ./skillc viz --out graph.html                 # interactive network view, open in a browser
-./skillc viz --format mermaid                 # or emit Mermaid / DOT text
 ```
 
-For an agent picking up skillc for the first time: `./skillc --skill` prints
-skillc's own skill page -- a SKILL.md-style document (name, description, when
-to use it) followed by situation-based recipes: "did my edit break loading",
-"did this round make the tree worse", "what does this machine load and how
-healthy is it", "where is a skill and what depends on it", and the fold-safety
-check, each with copy-paste commands. `./skillc --help` is the compact product
-reference and routes there. Looking a concrete skill up (mounts, references,
-blast radius) is `./skillc query --skill <name>`.
-
-It compiles to a single static binary: copy it to any machine (same
-GOOS/GOARCH) and run it, no interpreter or package install needed.
-
-The command set stays small on purpose: `build` / `check` / `diff` do the parts
-an agent cannot trivially reproduce (scan the disk, rank diagnostics, subtract
-two snapshots correctly). Descriptive questions -- find a skill, show its blast
-radius, print a health line -- are one `jq` over `state.json`, so they live as
-recipes in [docs/state-contract.md](docs/state-contract.md) rather than as
-frozen flags. (`query` is kept as a convenience for the common single-skill
-lookup.)
+`./skillc --skill` prints skillc's own skill page -- situation-based recipes
+("did my edit break loading", "did this round make the tree worse", "where is
+a skill and what depends on it", ...) with copy-paste commands; `--help` is
+the compact reference and routes there. `check` exits 1 when errors are
+present, so it drops straight into CI or pre-commit.
 
 Common flags:
 
 - `--extra-root <dir>` append one load root (repeatable)
 - `--only-root <dir>` compile only these roots, skip discovery (for tests and targeted checks)
 
-`check` exits 1 when errors are present, so it drops straight into CI or
-pre-commit.
-
 ## Where load roots come from
 
-The compiler reflects the dirs the agent **actually loads**, not every skill on
-the filesystem. Discovery is recursive: every `SKILL.md` at any depth under a
-root is a loadable skill -- nesting is recorded (`contains` / `contained_by`),
-never used to prune. The premise and the deliberate divergences from upstream:
+The compiler reflects the dirs the agent **actually loads**: agent skill dirs
+(the list mirrors the community-maintained table in
+[vercel-labs/skills](https://github.com/vercel-labs/skills), env-relocated
+homes honored) and plugin caches -- where only the newest version dir
+survives, so unloadable zombie versions never appear. Discovery is recursive,
+everything dedups by realpath, and `provenance` records every arrival path.
+The premise, the full divergence list, and the sync policy:
 [docs/load-roots.md](docs/load-roots.md).
-
-- **agent dirs**: `~/.trae/skills`, `~/.agents/skills`, `~/.claude/skills`,
-  `~/.zcode/skills`, etc. -- the list mirrors the community-maintained agent
-  table in [vercel-labs/skills](https://github.com/vercel-labs/skills) (pinned
-  revision), with env-relocated homes (`CODEX_HOME`, `CLAUDE_CONFIG_DIR`, ...)
-  honored too. Provenance and divergences:
-  [docs/load-roots.md](docs/load-roots.md).
-- **plugin cache**: `~/.trae/plugins/cache`, `~/.claude/plugins/cache`,
-  `~/.zcode/cli/plugins/cache`. A plugin
-  often has dozens of historical versions coexisting; the agent loads only the
-  newest -- the compiler **keeps only the version dir with the newest mtime**,
-  otherwise a pile of unloadable zombie versions would appear out of nowhere.
-- deduped by realpath; when one batch of skills is symlinked into several roots
-  it merges into one node, and `provenance` records every arrival path.
-
-Skills inside project repos are not scanned -- those do not occupy the agent's
-resident context; that is part of "later".
 
 ## Judging whether a change broke things
 
@@ -207,35 +173,26 @@ To judge regressions, compare two states:
 "notes". Exit code: 1 on any regression, 0 otherwise.
 
 Both files are its own `build --out` output, so `diff` first checks their
-`schema` fields match; snapshots from two different skillc versions cannot be
-compared and it refuses with exit code 2 rather than silently miscomputing.
+`schema` fields match and refuses with exit code 2 rather than silently
+miscomputing across skillc versions.
 
-## Reference-resolution trade-offs
+## How references are resolved
 
 Extraction is AST-based (goldmark, the CommonMark standard), so fenced code
-blocks and inline code are excluded by the parser, not by regex guesswork.
-Two tiers of references come out of that:
+and inline code are excluded by the parser, not regex guesswork. Markdown
+links and bare relative paths in prose are references; an unresolvable one is
+a broken ref -- an error when written in `SKILL.md`, a warn in any other doc
+of the skill. A path in backticks counts when it resolves and stays silent
+when it does not -- an example filename is not a fault. Resolution tries
+file-relative, then skill-root-relative, then repo-root-relative; a ref to an
+existing file outside any skill is `external_refs`: checked for existence,
+not counted as broken. The full semantics, severity reasoning, and prior art:
+[docs/ref-graph.md](docs/ref-graph.md).
 
-- **Markdown links and bare relative paths in prose** are references; an
-  unresolvable one is a broken ref -- an error when written in `SKILL.md`, a
-  warn when written in any other doc of the skill (the same call rustdoc makes
-  with its broken-intra-doc-links lint). Only errors fail `check`.
-- **A path in inline code counts when it resolves** (rustdoc treats backticks
-  as links too): the agent really will read `qa/look-mechanics.md`. An
-  unresolvable one stays silent -- an example filename like `TODO.md` is not a
-  fault. Resolution order: file-relative first, then skill-root-relative,
-  then repo-root-relative. A ref to an existing file outside the skill root
-  is recorded as `external_refs`: still checked for existence, but not
-  counted as broken.
-
-Every markdown file inside a skill is also compiled as a graph node with
-per-file out-edges (`files` / `file_edges` in the state), so doc-to-doc links
-inside one skill are visible -- see
-[docs/ref-graph.md](docs/ref-graph.md) for the design and
-[docs/state-contract.md](docs/state-contract.md) for recipes (orphans,
-blast radius). `viz` renders broken refs the same way in every format
-(HTML, Mermaid, DOT): a red dashed edge to a ghost endpoint labeled with the
-text as written, so a dead link is visible on the graph, not just as a count.
+Every markdown file inside a skill is also a graph node with per-file
+out-edges (`files` / `file_edges`), so doc-to-doc links inside one skill are
+visible -- orphans and rename blast radius are one `jq` away
+([docs/state-contract.md](docs/state-contract.md)).
 
 ## Design principle
 

@@ -3,7 +3,7 @@ type: Index
 title: skillscope docs
 description: Repo-specific design docs for skillscope - who it serves, what it refuses, and the decisions the compiler rests on.
 tags: [index, navigation]
-updated: 2026-09-02
+updated: 2026-09-06
 ---
 
 # skillscope docs
@@ -24,6 +24,7 @@ decisions with lasting value go here; transient actions do not enter the tree.
 | [Load roots](load-roots.md) | Where the scanned-directory list comes from (upstream mirror, divergences, sync policy) |
 | [Reference graph](ref-graph.md) | File-level graph design: extraction semantics, severity split, prior-art decisions |
 | [State graph contract](state-contract.md) | Every field of `state.json`, plus `jq` recipes so an agent does find / explain / health itself |
+| [Releases](release.md) | CI, release pipeline, the one-key installer, and why Windows / package managers are not built |
 
 ## Where to start
 

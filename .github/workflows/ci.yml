@@ -1,0 +1,29 @@
+# CI: the repo's own self-check, verbatim.
+#
+# One grammar locally and in CI: scripts/check.sh is the same gate a
+# committer runs before a commit (build + vet + tests + self-compile +
+# ratchet / protected-surface / header gates). It needs only Go and bash;
+# the catalogue fixtures are vendored, so no network access is required.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+      - run: ./scripts/check.sh

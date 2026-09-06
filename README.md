@@ -1,5 +1,8 @@
 # skill-compiler
 
+[![ci](https://github.com/williamfzc/skill-compiler/actions/workflows/ci.yml/badge.svg)](
+https://github.com/williamfzc/skill-compiler/actions/workflows/ci.yml)
+
 A skill compiler. It compiles every skill this machine's agents load, plus their
 reference relationships, into a deterministic state (one graph) and checks
 correctness.
@@ -55,10 +58,30 @@ identities       multi_mounted (one thing mounted in many places) / same_content
 diagnostics      correctness diagnostics (error / warn)
 ```
 
+## Install
+
+One key (macOS / Linux; installs into `~/.local/bin`):
+
+```bash
+curl -fsSL https://github.com/williamfzc/skill-compiler/releases/latest/download/install.sh | bash
+```
+
+The script downloads the release tarball for your platform, verifies it against
+the release's checksums, and drops the single `skillc` binary into
+`~/.local/bin`. Override the destination with `SKILLC_INSTALL_DIR`, or pin a
+version with `SKILLC_VERSION=v0.1.0`. Review before running: the same script
+lives at [scripts/install.sh](scripts/install.sh) in this repo.
+
+From source instead (any platform Go builds for):
+
+```bash
+go install github.com/williamfzc/skill-compiler/cmd/skillc@latest
+```
+
 ## Usage
 
 ```bash
-go build -o skillc ./cmd/skillc      # or: go install ./cmd/skillc
+go build -o skillc ./cmd/skillc      # or: go install ./cmd/skillc for a local dev build
 
 ./skillc roots                                # list discovered load roots only
 ./skillc build --out state.json               # compile into the state graph

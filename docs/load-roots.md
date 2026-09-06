@@ -12,6 +12,16 @@ timestamp: 2026-09-05
 skills from". That fact is a maintained table, not something the compiler can
 derive: it reflects each agent loader's conventions, which change upstream.
 
+## The loader is recursive
+
+The premise discovery rests on: an agent loader does not stop at the first
+`SKILL.md` -- every `SKILL.md` at any depth under a root is independently
+loadable (one skill directory may carry a `roles/` tree whose members are
+skills of their own). The compiler therefore scans roots recursively and
+records nesting as `contains` / `contained_by` edges instead of using it to
+prune. A reachability model built on any other premise describes a loader
+that does not exist.
+
 ## Upstream source of truth
 
 The agent directory list **mirrors** [`vercel-labs/skills`](https://github.com/vercel-labs/skills)

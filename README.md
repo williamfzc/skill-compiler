@@ -7,25 +7,8 @@ A skill compiler. It compiles every skill this machine's agents load, plus their
 reference relationships, into a deterministic state (one graph) and checks
 correctness.
 
-This is the solid base. Optimization actions -- folding, slimming, dedup -- are
-built on top of this state; they come later. Get the ground right first.
-
 For who it is built for and how far is far enough, see the
 [user stories](docs/user-stories.md); below covers **what** the compiler checks.
-
-## Why the rewrite
-
-The previous version rested on a **wrong premise**: it assumed the loader "scans
-one level only", that a parent dir with a `SKILL.md` truncates its subdirs, and
-built an `indexed / routed / unreachable` reachability model on top.
-
-That does not hold in practice. `metis-case-writer` has its own `SKILL.md`, yet
-the 9 `SKILL.md` files under its `roles/` are still each loaded as independent
-skills. **The loader is recursive**: every `SKILL.md` at any depth under a root
-is a loadable skill. Once the premise is wrong, the whole model is meaningless.
-
-So it was rebuilt from scratch. The compiler does not guess "which skill should
-be discovered"; it observes four deterministic facts.
 
 ## What the compiler checks
 
@@ -124,7 +107,10 @@ pre-commit.
 ## Where load roots come from
 
 The compiler reflects the dirs the agent **actually loads**, not every skill on
-the filesystem:
+the filesystem. Discovery is recursive: every `SKILL.md` at any depth under a
+root is a loadable skill -- nesting is recorded (`contains` / `contained_by`),
+never used to prune. The premise and the deliberate divergences from upstream:
+[docs/load-roots.md](docs/load-roots.md).
 
 - **agent dirs**: `~/.trae/skills`, `~/.agents/skills`, `~/.claude/skills`,
   `~/.zcode/skills`, etc. -- the list mirrors the community-maintained agent

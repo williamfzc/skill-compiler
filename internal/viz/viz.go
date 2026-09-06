@@ -4,6 +4,10 @@
 // HTML (the default for `viz --out`), Mermaid flowchart text, and Graphviz
 // DOT. Files are grouped under their owning skill; quoted references
 // (inline-code paths) render dashed -- a weaker, resolved-only kind of link.
+// Broken references render the same way in every format: a red dashed edge
+// to a ghost endpoint labeled with the written text. Ghosts are a rendering
+// of the broken_ref facts, not invented nodes -- the state stays as
+// refgraph built it.
 package viz
 
 import (
@@ -14,6 +18,31 @@ import (
 
 	"skillscope/internal/state"
 )
+
+// ghost is one rendered broken reference: the source file's node id and the
+// text as written. One ghost per distinct missing target per file.
+type ghost struct {
+	FromID string
+	Raw    string
+}
+
+// brokenGhosts dedupes the graph's broken refs into ghosts in deterministic
+// order. A ref whose writing file somehow has no node id is skipped: no
+// renderer may emit an edge with an empty endpoint.
+func brokenGhosts(g *state.Graph, ids map[string]string) []ghost {
+	type key struct{ from, raw string }
+	seen := map[key]bool{}
+	var out []ghost
+	for _, br := range g.BrokenRefs {
+		from, ok := ids[br.RealFrom]
+		if !ok || seen[key{from, br.Raw}] {
+			continue
+		}
+		seen[key{from, br.Raw}] = true
+		out = append(out, ghost{from, br.Raw})
+	}
+	return out
+}
 
 // Mermaid renders the graph as a Mermaid flowchart.
 func Mermaid(g *state.Graph) string {
@@ -39,6 +68,13 @@ func Mermaid(g *state.Graph) string {
 			style = "-.->"
 		}
 		fmt.Fprintf(&b, "  %s %s %s\n", ids[e.From], style, ids[e.To])
+	}
+	for i, gh := range brokenGhosts(g, ids) {
+		fmt.Fprintf(&b, "  %s -.->|%s| b%d((%s)):::broken\n",
+			gh.FromID, dotQuote(gh.Raw), i, dotQuote(gh.Raw))
+	}
+	if len(g.BrokenRefs) > 0 {
+		b.WriteString("classDef broken stroke:#cc3333,stroke-dasharray:5 5,color:#cc3333;\n")
 	}
 	return b.String()
 }
@@ -67,6 +103,12 @@ func DOT(g *state.Graph) string {
 		}
 		fmt.Fprintf(&b, "  %s -> %s [label=%s%s];\n",
 			ids[e.From], ids[e.To], dotQuote(e.Raw), style)
+	}
+	for i, gh := range brokenGhosts(g, ids) {
+		fmt.Fprintf(&b, "  b%d [label=%s, shape=circle, style=dashed, peripheries=2, "+
+			"color=\"#cc3333\", fontcolor=\"#cc3333\"];\n", i, dotQuote(gh.Raw))
+		fmt.Fprintf(&b, "  %s -> b%d [label=%s, style=dashed, color=\"#cc3333\"];\n",
+			gh.FromID, i, dotQuote(gh.Raw))
 	}
 	b.WriteString("}\n")
 	return b.String()

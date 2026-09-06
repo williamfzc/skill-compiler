@@ -678,11 +678,13 @@ func TestSkillFlagIsSkillcOwnPage(t *testing.T) {
 }
 
 // viz renders the compiled graph for human viewing: self-contained HTML by
-// default, plain Mermaid or DOT on request.
+// default, plain Mermaid or DOT on request. A broken reference must be
+// visible in every format -- a ghost endpoint on a red dashed edge -- not
+// just a count in a summary line.
 func TestVizRendersGraph(t *testing.T) {
 	root := t.TempDir()
 	mkskill(t, root, "a", "a", true, strp("does a"),
-		"\nsee [b](../b/SKILL.md) and read `notes/plan.md` and [c](../outside/config.md)\n", "")
+		"\nsee [b](../b/SKILL.md) and read `notes/plan.md` and [c](../outside/config.md) and [gone](./nope.md)\n", "")
 	simpleSkill(t, root, "b", "b")
 	mkfile(t, root, "a/notes/plan.md", "# plan\n")
 	mkfile(t, root, "outside/config.md", "# config\n")
@@ -701,10 +703,21 @@ func TestVizRendersGraph(t *testing.T) {
 			t.Fatalf("edge with empty endpoint: %q", line)
 		}
 	}
+	// The broken ref renders as a ghost endpoint on a red dashed edge.
+	for _, want := range []string{"classDef broken", "nope.md"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("mermaid should mark the broken ref %q", want)
+		}
+	}
 
 	code, out = runCLI(t, "viz", "--only-root", root, "--format", "dot")
 	if code != 0 || !strings.Contains(out, "digraph") {
 		t.Fatalf("viz dot should emit a digraph, got %d: %s", code, out)
+	}
+	for _, want := range []string{"peripheries=2", "color=\"#cc3333\"", "nope.md"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("dot should mark the broken ref %q", want)
+		}
 	}
 
 	outPath := filepath.Join(t.TempDir(), "graph.html")
@@ -719,6 +732,13 @@ func TestVizRendersGraph(t *testing.T) {
 		"config.md", "skill-overview", "skill-back"} {
 		if !strings.Contains(string(html), want) {
 			t.Fatalf("html should contain %q", want)
+		}
+	}
+	// The page data carries every broken ref so the canvas can draw it, and
+	// the legend explains the encoding.
+	for _, want := range []string{`"broken":[{`, "nope.md", "broken reference"} {
+		if !strings.Contains(string(html), want) {
+			t.Fatalf("html should carry the broken ref for rendering: %q", want)
 		}
 	}
 

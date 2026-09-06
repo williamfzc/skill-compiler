@@ -5,6 +5,9 @@
 // by file count, edges only between skills) and a per-skill detail (that
 // skill's files plus whatever they reference). Click a skill to drill in;
 // the back button returns. Vanilla-JS force simulation, no external scripts.
+// Broken references are carried in the page data: the detail view draws each
+// as a red dashed edge to a hollow ghost node, and the overview rings any
+// skill whose files write broken refs.
 package viz
 
 import (
@@ -32,12 +35,18 @@ func HTML(g *state.Graph) string {
 	type nSkill struct {
 		N  string `json:"n"`  // name
 		Fc int    `json:"fc"` // file count
+		B  int    `json:"b"`  // broken refs written by this skill's files
+	}
+	type nBroken struct {
+		S int    `json:"s"` // source file node index
+		R string `json:"r"` // the reference text as written
 	}
 	type nData struct {
-		Skills []nSkill `json:"skills"`
-		Sl     [][2]int `json:"sl"` // skill-level links, aggregated cross-skill refs
-		Nodes  []nNode  `json:"nodes"`
-		Links  []nLink  `json:"links"`
+		Skills []nSkill  `json:"skills"`
+		Sl     [][2]int  `json:"sl"` // skill-level links, aggregated cross-skill refs
+		Nodes  []nNode   `json:"nodes"`
+		Links  []nLink   `json:"links"`
+		Broken []nBroken `json:"broken"`
 	}
 
 	skills := sortedSkills(g)
@@ -52,13 +61,14 @@ func HTML(g *state.Graph) string {
 		paths = append(paths, p)
 	}
 	sort.Strings(paths)
-	// Sl and Links must marshal as [] not null: the page script calls .map
-	// on both unconditionally, and a machine may genuinely have zero
-	// cross-skill references.
+	// Sl, Links and Broken must marshal as [] not null: the page script calls
+	// .map on them unconditionally, and a machine may genuinely have zero of
+	// any of them.
 	data := nData{
 		Skills: make([]nSkill, len(skills)),
 		Sl:     [][2]int{},
 		Links:  []nLink{},
+		Broken: []nBroken{},
 	}
 	for i, sk := range skills {
 		data.Skills[i] = nSkill{N: skillName(sk)}
@@ -105,6 +115,20 @@ func HTML(g *state.Graph) string {
 			data.Sl = append(data.Sl, key)
 		}
 	}
+	brSeen := map[[2]any]bool{}
+	for _, br := range g.BrokenRefs {
+		s, ok := nodeIdx[br.RealFrom]
+		if !ok {
+			continue // never hand the page an edge with a dangling source
+		}
+		k := [2]any{s, br.Raw}
+		if brSeen[k] {
+			continue
+		}
+		brSeen[k] = true
+		data.Broken = append(data.Broken, nBroken{S: s, R: br.Raw})
+		data.Skills[skillIdx[br.From]].B++
+	}
 
 	encoded, err := json.Marshal(data)
 	if err != nil {
@@ -122,12 +146,18 @@ func HTML(g *state.Graph) string {
 		"#skill-back{position:fixed;top:8px;right:8px;background:#fff;border:1px solid #ccc;" +
 		"border-radius:8px;padding:6px 12px;font-size:13px;cursor:pointer;display:none}</style>\n")
 	fmt.Fprintf(&b, "<div id=\"legend\"><b id=\"skill-overview\">skillc network</b>"+
-		"<br>%d skills &middot; %d files &middot; %d edges &middot; %d broken<br>",
+		"<br>%d skills &middot; %d files &middot; %d edges &middot; %d broken"+
+		"<br><span style=\"color:#cc3333\">- - &#10696;</span> broken reference "+
+		"(target does not exist)<br>",
 		s.SkillCount, s.FileCount, s.FileEdgeCount, s.BrokenRefCount)
 	for i, sk := range data.Skills {
+		badge := ""
+		if sk.B > 0 {
+			badge = fmt.Sprintf(" <span style=\"color:#cc3333\">&#9888; %d</span>", sk.B)
+		}
 		fmt.Fprintf(&b, "<span class=\"sk\" data-i=\"%d\" onclick=\"enter(%d)\">"+
-			"<span class=\"dot\" style=\"background:%s\"></span>%s <span style=\"color:#999\">(%d)</span></span><br>",
-			i, i, groupColor(i), html.EscapeString(sk.N), sk.Fc)
+			"<span class=\"dot\" style=\"background:%s\"></span>%s <span style=\"color:#999\">(%d)</span>%s</span><br>",
+			i, i, groupColor(i), html.EscapeString(sk.N), sk.Fc, badge)
 	}
 	b.WriteString("</div>\n<div id=\"skill-back\" onclick=\"enter(-1)\">&larr; all skills</div>\n")
 	b.WriteString("<div id=\"hint\">click a skill to drill in &middot; drag to move &middot; drag background to pan &middot; wheel to zoom</div>\n")

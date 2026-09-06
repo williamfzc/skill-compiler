@@ -164,7 +164,9 @@ per-file out-edges (`files` / `file_edges` in the state), so doc-to-doc links
 inside one skill are visible -- see
 [docs/ref-graph.md](docs/ref-graph.md) for the design and
 [docs/state-contract.md](docs/state-contract.md) for recipes (orphans,
-blast radius).
+blast radius). `viz` renders broken refs the same way in every format
+(HTML, Mermaid, DOT): a red dashed edge to a ghost endpoint labeled with the
+text as written, so a dead link is visible on the graph, not just as a count.
 
 ## Design principle
 

@@ -22,7 +22,7 @@ function hue(g) { return 'hsl(' + ((g * 137 + 31) % 360) + ',62%,52%)'; }
 const SK = data.skills.map((s, i) => ({
   x: innerWidth / 2 + Math.cos(i * 2.4) * 180,
   y: innerHeight / 2 + Math.sin(i * 2.4) * 140,
-  vx: 0, vy: 0, l: s.n, g: i, fc: s.fc, kind: 'skill', i,
+  vx: 0, vy: 0, l: s.n, g: i, fc: s.fc, b: s.b, kind: 'skill', i,
 }));
 const F = data.nodes.map((n, i) => ({
   x: innerWidth / 2 + Math.cos(i * 2.4) * (120 + (i % 7) * 20),
@@ -45,11 +45,28 @@ function setView(m) {
       const gs = data.nodes[l.s].g, gt = data.nodes[l.t].g;
       if (gs === m || gt === m) { keep.add(l.s); keep.add(l.t); }
     }
+    for (const br of data.broken) if (keep.has(br.s)) keep.add(br.s);
     const idx = new Map();
     let np = 0;
     for (const i of keep) { idx.set(i, np); np++; }
     P = [...keep].map(i => F[i]);
     L = [];
+    // Ghosts: one hollow particle per broken ref written inside this view,
+    // tethered to its writing file. The missing target has no file node --
+    // the ghost is the drawing of the fact, not an invented one. Ghosts of
+    // one source fan out on distinct angles: stacked starts would blow each
+    // other away with pair repulsion.
+    const fan = new Map();
+    for (const br of data.broken) {
+      if (!keep.has(br.s)) continue;
+      const k = fan.get(br.s) || 0;
+      fan.set(br.s, k + 1);
+      const src = P[idx.get(br.s)];
+      const ang = (-125 + k * 55) * Math.PI / 180;
+      P.push({ x: src.x + Math.cos(ang) * 80, y: src.y + Math.sin(ang) * 80,
+        vx: 0, vy: 0, l: br.r, g: -2, kind: 'ghost' });
+      L.push({ a: idx.get(br.s), b: P.length - 1, brk: true });
+    }
     for (const l of data.links) {
       if (keep.has(l.s) && keep.has(l.t)) L.push({ a: idx.get(l.s), b: idx.get(l.t), q: l.q });
     }
@@ -83,7 +100,8 @@ function tick() {
     const a = P[l.a], b = P[l.b];
     const dx = b.x - a.x, dy = b.y - a.y;
     const d = Math.sqrt(dx * dx + dy * dy) || 1;
-    const f = (d - (mode === 'overview' ? 160 : 70)) * 0.02 * alpha;
+    const rest = l.brk ? 80 : (mode === 'overview' ? 160 : 70);
+    const f = (d - rest) * 0.02 * alpha;
     a.vx += dx / d * f; a.vy += dy / d * f;
     b.vx -= dx / d * f; b.vy -= dy / d * f;
   }
@@ -95,7 +113,8 @@ function tick() {
 }
 
 function radius(n, deg) {
-  return n.kind === 'skill' ? 7 + Math.sqrt(n.fc) * 3 : 3 + Math.sqrt(deg) * 1.6;
+  return n.kind === 'skill' ? 7 + Math.sqrt(n.fc) * 3
+    : n.kind === 'ghost' ? 5 : 3 + Math.sqrt(deg) * 1.6;
 }
 
 function draw() {
@@ -105,13 +124,19 @@ function draw() {
   ctx.save();
   ctx.translate(ox, oy); ctx.scale(scale, scale);
   const deg = P.map(() => 0);
-  for (const l of L) { deg[l.a]++; deg[l.b]++; }
+  for (const l of L) { if (!l.brk) { deg[l.a]++; deg[l.b]++; } }
   for (const l of L) {
     const a = P[l.a], b = P[l.b];
-    const hot = hover >= 0 && (l.a === hover || l.b === hover);
-    ctx.strokeStyle = hot ? '#d33' : (hover >= 0 ? 'rgba(170,170,170,0.25)' : 'rgba(140,140,140,0.6)');
-    ctx.lineWidth = hot ? 1.8 : 1;
-    if (l.q) ctx.setLineDash([3, 3]); else ctx.setLineDash([]);
+    if (l.brk) {
+      ctx.strokeStyle = '#cc3333';
+      ctx.lineWidth = 1.2;
+      ctx.setLineDash([4, 3]);
+    } else {
+      const hot = hover >= 0 && (l.a === hover || l.b === hover);
+      ctx.strokeStyle = hot ? '#d33' : (hover >= 0 ? 'rgba(170,170,170,0.25)' : 'rgba(140,140,140,0.6)');
+      ctx.lineWidth = hot ? 1.8 : 1;
+      if (l.q) ctx.setLineDash([3, 3]); else ctx.setLineDash([]);
+    }
     ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
   }
   ctx.setLineDash([]);
@@ -120,15 +145,31 @@ function draw() {
     const dim = hover >= 0 && hover !== i &&
       !L.some(l => (l.a === hover && l.b === i) || (l.b === hover && l.a === i));
     ctx.globalAlpha = hover >= 0 && dim ? 0.25 : 1;
-    ctx.fillStyle = (n.kind === 'file' && n.g < 0) ? '#999' : hue(n.g < 0 ? -n.g + 17 : n.g);
-    ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, 6.29); ctx.fill();
+    if (n.kind === 'ghost') {
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = '#cc3333';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([3, 2]);
+      ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, 6.29); ctx.fill(); ctx.stroke();
+      ctx.setLineDash([]);
+    } else {
+      ctx.fillStyle = (n.kind === 'file' && n.g < 0) ? '#999' : hue(n.g < 0 ? -n.g + 17 : n.g);
+      ctx.beginPath(); ctx.arc(n.x, n.y, r, 0, 6.29); ctx.fill();
+      if (n.kind === 'skill' && n.b > 0) {
+        ctx.strokeStyle = '#cc3333'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 3]);
+        ctx.beginPath(); ctx.arc(n.x, n.y, r + 4, 0, 6.29); ctx.stroke();
+        ctx.setLineDash([]);
+      }
+    }
     if (hover === i) {
       ctx.strokeStyle = '#d33'; ctx.lineWidth = 2;
       ctx.beginPath(); ctx.arc(n.x, n.y, r + 3, 0, 6.29); ctx.stroke();
     }
-    ctx.fillStyle = '#333'; ctx.font = n.kind === 'skill' ? '12px sans-serif' : '10px sans-serif';
+    ctx.fillStyle = n.kind === 'ghost' ? '#cc3333' : '#333';
+    ctx.font = n.kind === 'skill' ? '12px sans-serif' : '10px sans-serif';
     ctx.textAlign = 'center';
-    ctx.fillText(n.l + (n.kind === 'skill' ? ' (' + n.fc + ')' : ''), n.x, n.y - r - 4);
+    ctx.fillText(n.l + (n.kind === 'skill' ? ' (' + n.fc + ')' : '')
+      + (n.kind === 'skill' && n.b > 0 ? ' \u26a0' + n.b : ''), n.x, n.y - r - 4);
   }
   ctx.globalAlpha = 1;
   ctx.restore();

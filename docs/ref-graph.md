@@ -3,7 +3,7 @@ type: Decision
 title: "The file-level reference graph and its extraction semantics"
 description: "Why extraction is goldmark-based, why quoted paths count when they resolve, why severity is split by writing file, and what was deliberately not adopted from prior art."
 tags: [refgraph, refparse, extraction, prior-art, decisions]
-timestamp: 2026-09-05
+timestamp: 2026-09-06
 ---
 
 # The file-level reference graph
@@ -53,6 +53,18 @@ Adopted from [Foam](https://github.com/foambubble/foam): **orphans** (files
 with no inbound and no outbound links) and **placeholders** (dangling links,
 our file-level broken refs). Foam's "a dangling link becomes a ghost node"
 was deliberately **not** adopted: we list facts, we do not invent nodes.
+
+## Rendering
+
+`skillc viz` (`internal/viz`) draws the graph for humans in three formats --
+HTML canvas, Mermaid, Graphviz DOT -- and draws broken refs the same way in
+all of them: a red dashed edge from the writing file to a **ghost endpoint**
+labeled with the text as written. The ghost is the *drawing* of a
+`broken_refs` row, not a node in the state: the Foam decision above still
+holds for the data model, and the renderers add nothing the compiler did not
+observe. The HTML overview rings any skill whose files write broken refs and
+carries per-skill counts in the legend; the per-skill detail view places the
+ghosts next to their writing files.
 
 ## Deliberately not adopted
 

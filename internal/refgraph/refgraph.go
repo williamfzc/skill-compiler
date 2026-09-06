@@ -18,9 +18,9 @@ import (
 	"sort"
 	"strings"
 
-	"skillscope/internal/collect"
-	"skillscope/internal/paths"
-	"skillscope/internal/refparse"
+	"github.com/williamfzc/skill-compiler/internal/collect"
+	"github.com/williamfzc/skill-compiler/internal/paths"
+	"github.com/williamfzc/skill-compiler/internal/refparse"
 )
 
 // FileNode is one markdown file inside a skill.

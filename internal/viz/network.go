@@ -18,7 +18,7 @@ import (
 	"sort"
 	"strings"
 
-	"skillscope/internal/state"
+	"github.com/williamfzc/skill-compiler/internal/state"
 )
 
 // HTML renders the interactive overview + drill-down network page.

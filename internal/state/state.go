@@ -9,12 +9,12 @@ package state
 import (
 	"time"
 
-	"skillscope/internal/analysis"
-	"skillscope/internal/collect"
-	"skillscope/internal/diagnostics"
-	"skillscope/internal/edges"
-	"skillscope/internal/refgraph"
-	"skillscope/internal/roots"
+	"github.com/williamfzc/skill-compiler/internal/analysis"
+	"github.com/williamfzc/skill-compiler/internal/collect"
+	"github.com/williamfzc/skill-compiler/internal/diagnostics"
+	"github.com/williamfzc/skill-compiler/internal/edges"
+	"github.com/williamfzc/skill-compiler/internal/refgraph"
+	"github.com/williamfzc/skill-compiler/internal/roots"
 )
 
 // Schema is the state format version. diff refuses two files whose Schema

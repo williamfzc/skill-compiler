@@ -20,7 +20,7 @@ import (
 	"testing"
 	"time"
 
-	"skillscope/internal/state"
+	"github.com/williamfzc/skill-compiler/internal/state"
 )
 
 // ---------------------------------------------------------------- fake home

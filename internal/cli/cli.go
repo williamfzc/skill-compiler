@@ -13,10 +13,10 @@ import (
 	"sort"
 	"strings"
 
-	"skillscope/internal/collect"
-	"skillscope/internal/paths"
-	"skillscope/internal/state"
-	"skillscope/internal/viz"
+	"github.com/williamfzc/skill-compiler/internal/collect"
+	"github.com/williamfzc/skill-compiler/internal/paths"
+	"github.com/williamfzc/skill-compiler/internal/state"
+	"github.com/williamfzc/skill-compiler/internal/viz"
 )
 
 // Run parses argv and dispatches; it returns the process exit code.

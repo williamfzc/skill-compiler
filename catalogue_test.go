@@ -17,7 +17,7 @@ import (
 	"strings"
 	"testing"
 
-	"skillscope/internal/state"
+	"github.com/williamfzc/skill-compiler/internal/state"
 )
 
 func corpusRoot(t *testing.T, rel string) string {

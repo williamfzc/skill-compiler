@@ -13,8 +13,8 @@ import (
 	"sort"
 	"strings"
 
-	"skillscope/internal/collect"
-	"skillscope/internal/paths"
+	"github.com/williamfzc/skill-compiler/internal/collect"
+	"github.com/williamfzc/skill-compiler/internal/paths"
 )
 
 // AgentRootCandidates are the directories an agent loads skills directly from

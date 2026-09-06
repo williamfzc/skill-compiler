@@ -11,10 +11,10 @@ import (
 	"strconv"
 	"strings"
 
-	"skillscope/internal/analysis"
-	"skillscope/internal/collect"
-	"skillscope/internal/refgraph"
-	"skillscope/internal/paths"
+	"github.com/williamfzc/skill-compiler/internal/analysis"
+	"github.com/williamfzc/skill-compiler/internal/collect"
+	"github.com/williamfzc/skill-compiler/internal/refgraph"
+	"github.com/williamfzc/skill-compiler/internal/paths"
 )
 
 // Diagnostic is one correctness finding, pre-sorted error-first.

@@ -16,7 +16,7 @@ import (
 	"strings"
 	"testing"
 
-	"skillscope/internal/state"
+	"github.com/williamfzc/skill-compiler/internal/state"
 )
 
 func worldRoot(t *testing.T, rel ...string) string {

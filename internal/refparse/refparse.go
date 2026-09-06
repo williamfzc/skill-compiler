@@ -24,8 +24,8 @@ import (
 	"github.com/yuin/goldmark/ast"
 	"github.com/yuin/goldmark/text"
 
-	"skillscope/internal/frontmatter"
-	"skillscope/internal/paths"
+	"github.com/williamfzc/skill-compiler/internal/frontmatter"
+	"github.com/williamfzc/skill-compiler/internal/paths"
 )
 
 // Target is one reference candidate found in a markdown document.

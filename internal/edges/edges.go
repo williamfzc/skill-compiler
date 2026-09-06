@@ -18,8 +18,8 @@ import (
 	"sort"
 	"strings"
 
-	"skillscope/internal/collect"
-	"skillscope/internal/refgraph"
+	"github.com/williamfzc/skill-compiler/internal/collect"
+	"github.com/williamfzc/skill-compiler/internal/refgraph"
 )
 
 // Edge is one relationship between two node ids. Ref edges additionally carry

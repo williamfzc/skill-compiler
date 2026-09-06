@@ -1,4 +1,4 @@
-module skillscope
+module github.com/williamfzc/skill-compiler
 
 go 1.22
 

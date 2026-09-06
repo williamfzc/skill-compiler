@@ -16,7 +16,7 @@ import (
 	"sort"
 	"strings"
 
-	"skillscope/internal/state"
+	"github.com/williamfzc/skill-compiler/internal/state"
 )
 
 // ghost is one rendered broken reference: the source file's node id and the

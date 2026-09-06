@@ -13,11 +13,11 @@ import (
 	"strings"
 	"testing"
 
-	"skillscope/internal/cli"
-	"skillscope/internal/collect"
-	"skillscope/internal/diagnostics"
-	"skillscope/internal/paths"
-	"skillscope/internal/state"
+	"github.com/williamfzc/skill-compiler/internal/cli"
+	"github.com/williamfzc/skill-compiler/internal/collect"
+	"github.com/williamfzc/skill-compiler/internal/diagnostics"
+	"github.com/williamfzc/skill-compiler/internal/paths"
+	"github.com/williamfzc/skill-compiler/internal/state"
 )
 
 // ---------------------------------------------------------------- helpers

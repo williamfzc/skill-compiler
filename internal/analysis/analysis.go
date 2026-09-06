@@ -10,8 +10,8 @@ import (
 	"path/filepath"
 	"sort"
 
-	"skillscope/internal/collect"
-	"skillscope/internal/edges"
+	"github.com/williamfzc/skill-compiler/internal/collect"
+	"github.com/williamfzc/skill-compiler/internal/edges"
 )
 
 // Collision is several skills within one root declaring the same effective

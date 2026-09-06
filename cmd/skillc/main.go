@@ -7,7 +7,7 @@ package main
 import (
 	"os"
 
-	"skillscope/internal/cli"
+	"github.com/williamfzc/skill-compiler/internal/cli"
 )
 
 func main() {

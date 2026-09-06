@@ -14,8 +14,8 @@ import (
 	"sort"
 	"strings"
 
-	"skillscope/internal/frontmatter"
-	"skillscope/internal/paths"
+	"github.com/williamfzc/skill-compiler/internal/frontmatter"
+	"github.com/williamfzc/skill-compiler/internal/paths"
 )
 
 // Provenance records one arrival path: the load root a skill was reached

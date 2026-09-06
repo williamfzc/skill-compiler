@@ -7,8 +7,54 @@ A skill compiler. It compiles every skill this machine's agents load, plus their
 reference relationships, into a deterministic state (one graph) and checks
 correctness.
 
-For who it is built for and how far is far enough, see the
-[user stories](docs/user-stories.md); below covers **what** the compiler checks.
+## What it is for
+
+Compiling is a means. The point is what the one state graph lets you answer:
+
+- **I edited a skill -- did I break it?** Skill failures are silent: a missing
+  description never triggers, a broken reference just degrades. `check` catches
+  them before commit and drops into CI / pre-commit with exit code 1.
+
+  ```bash
+  ./skillc check
+  ```
+
+- **Did this round of cleanup make things worse, or was it already broken?**
+  A bare check cannot tell new debt from old. `diff` flags only what the newer
+  state has and the older lacks -- never the reverse.
+
+  ```bash
+  ./skillc diff --before before.json --after after.json
+  ```
+
+- **Can I move, fold, or delete this skill safely?** One command shows every
+  mount of a skill, what references it, and what sits inside it, so the blast
+  radius is read off the graph instead of guessed.
+
+  ```bash
+  ./skillc query --skill <name>
+  ```
+
+- **What does this machine actually load, and at what context cost?** Agent
+  dirs, plugin caches with dozens of zombie versions, layers of symlinks --
+  compiled into one deterministic tree. The build prints a health line; the
+  resident-description cost per turn is one field away.
+
+  ```bash
+  ./skillc build --out state.json
+  jq .summary.resident_desc_chars state.json
+  ```
+
+- **What does the web between skills look like?** `viz` renders the reference
+  network -- cross-skill references, doc-level links, broken references as red
+  dashed edges -- for humans, not for `jq`.
+
+  ```bash
+  ./skillc viz --out graph.html
+  ```
+
+The full scenarios and the reasoning behind each boundary live in
+[docs/user-stories.md](docs/user-stories.md).
 
 ## What the compiler checks
 

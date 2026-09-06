@@ -45,6 +45,20 @@ Compiling is a means. The point is what the one state graph lets you answer:
   jq .summary.resident_desc_chars state.json
   ```
 
+- **Every agent installed the same skill into its own directory?** One thing
+  symlinked into several roots folds back into one node with every arrival
+  path recorded (`identities.multi_mounted`); independent installs with
+  byte-identical content are grouped as fold candidates (`same_content`);
+  same-name skills that a loader would silently resolve to one of them are
+  flagged (`name_collisions`).
+
+  ```bash
+  ./skillc build --out state.json
+  jq '.identities.same_content, .identities.multi_mounted, .name_collisions' state.json
+  ```
+
+  Pretty-printed recipes: [docs/state-contract.md](docs/state-contract.md).
+
 - **What does the web between skills look like?** `viz` renders the reference
   network -- cross-skill references, doc-level links, broken references as red
   dashed edges -- for humans, not for `jq`.
